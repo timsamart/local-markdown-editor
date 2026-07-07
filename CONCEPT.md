@@ -119,6 +119,7 @@ App appearance and document appearance are separate systems.
 6. **Solarized** — familiar low-fatigue light and dark variants
 7. **Terminal** — monospaced, high-contrast, intentionally utilitarian
 8. **Accessible High Contrast** — maximum clarity with non-color state cues
+9. **R+V Brand** — bundled R+V Sans and Slab typography with navy, orange, teal, and cream brand tokens
 
 The default is **Modern**, using bundled system-font stacks so the file makes no network requests.
 

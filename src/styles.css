@@ -1,3 +1,8 @@
+@font-face { font-family: "RuVSans"; src: url("data:font/woff2;base64,__RUV_SANS_REGULAR__") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "RuVSans"; src: url("data:font/woff2;base64,__RUV_SANS_BOLD__") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "RuVSlab"; src: url("data:font/woff2;base64,__RUV_SLAB_REGULAR__") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "RuVSlab"; src: url("data:font/woff2;base64,__RUV_SLAB_BOLD__") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
 :root {
   color-scheme: light;
   --chrome-bg: #f5f6f3;
@@ -358,6 +363,16 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
 [data-doc-theme="solarized"] { --doc-bg: #fdf6e3; --doc-surface: #eee8d5; --doc-text: #586e75; --doc-muted: #839496; --doc-heading: #073642; --doc-link: #268bd2; --doc-border: #ddd6c1; --doc-accent: #b58900; --doc-code-bg: #eee8d5; --doc-quote-bg: #f4eedc; --doc-selection: #d7e3c6; }
 [data-doc-theme="terminal"] { --doc-bg: #0e1512; --doc-surface: #15201b; --doc-text: #b5cabd; --doc-muted: #789486; --doc-heading: #d9f5e5; --doc-link: #70d6a6; --doc-border: #263c31; --doc-accent: #58cf94; --doc-code-bg: #131e19; --doc-quote-bg: #14241c; --doc-selection: #28513d; --doc-font: var(--mono-font); --doc-heading-font: var(--mono-font); --doc-size: 15px; --doc-leading: 1.72; --doc-width: 820px; }
 [data-doc-theme="contrast"] { --doc-bg: #ffffff; --doc-surface: #f0f0f0; --doc-text: #000000; --doc-muted: #353535; --doc-heading: #000000; --doc-link: #0033cc; --doc-border: #000000; --doc-accent: #0033cc; --doc-code-bg: #efefef; --doc-quote-bg: #f2f2ff; --doc-selection: #ffe66d; --doc-size: 18px; --doc-leading: 1.75; }
+[data-doc-theme="ruv"] { --doc-bg: #ffffff; --doc-surface: #f4f6f8; --doc-text: #1a1a1a; --doc-muted: #4c596f; --doc-heading: #001957; --doc-link: #005f68; --doc-border: #dfe4ec; --doc-accent: #eb6504; --doc-code-bg: #e8eefb; --doc-quote-bg: #fff4e0; --doc-selection: #bceeee; --doc-font: "RuVSans", Arial, Helvetica, sans-serif; --doc-heading-font: "RuVSlab", Georgia, serif; --doc-size: 17px; --doc-leading: 1.68; --doc-width: 780px; }
+[data-doc-theme="ruv"] .markdown-body h1 { color: #001957; font-size: 2.65em; }
+[data-doc-theme="ruv"] .markdown-body h2 { border-bottom: 3px solid #e8eefb; }
+[data-doc-theme="ruv"] .markdown-body h2::after { content: ""; display: block; width: 54px; height: 3px; margin-bottom: -3px; background: #f79506; }
+[data-doc-theme="ruv"] .markdown-body blockquote { border-left-width: 5px; border-left-color: #f79506; border-radius: 0 16px 16px 0; }
+[data-doc-theme="ruv"] .markdown-body pre { border-color: #001957; background: #001957; }
+[data-doc-theme="ruv"] .markdown-body pre code { color: #f4f6f8; }
+[data-doc-theme="ruv"] .markdown-body th { border-color: #001957; background: #001957; color: #ffffff; }
+[data-doc-theme="ruv"] .markdown-body hr { height: 3px; background: linear-gradient(90deg, #f79506 0 54px, #e8eefb 54px); }
+[data-doc-theme="ruv"] .mermaid-shell { border-color: #dfe4ec; background: #f4f6f8; }
 
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes slide-in { from { transform: translateX(20px); opacity: 0; } }

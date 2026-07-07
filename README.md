@@ -8,7 +8,7 @@ Open [`markdown-studio.html`](./markdown-studio.html) in a modern browser, then 
 
 - **Workspace:** multi-file tabs, CodeMirror editing, live preview, document outline, recovery drafts, direct save where supported, and download fallback
 - **Reader:** focused typography, reading progress, outline, printing, and rendered Mermaid diagrams
-- **Theme Studio:** eight document presets plus custom font, size, line height, width, and color controls
+- **Theme Studio:** nine document presets—including an embedded R+V brand style—plus custom font, size, line height, width, and color controls
 - **Local-first:** Markdown and Mermaid output are sanitized; raw HTML and remote images are disabled
 
 Useful shortcuts:

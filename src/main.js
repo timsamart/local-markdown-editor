@@ -134,6 +134,7 @@ const THEMES = [
   { id: "solarized", name: "Solarized", desc: "Low fatigue", colors: ["#fdf6e3", "#586e75", "#b58900"] },
   { id: "terminal", name: "Terminal", desc: "Monospace focus", colors: ["#0e1512", "#b5cabd", "#58cf94"] },
   { id: "contrast", name: "High Contrast", desc: "Maximum clarity", colors: ["#ffffff", "#000000", "#0033cc"] },
+  { id: "ruv", name: "R+V Brand", desc: "Slab & brand palette", colors: ["#001957", "#f79506", "#00dcdc"] },
 ];
 
 const FONT_OPTIONS = {
@@ -142,6 +143,7 @@ const FONT_OPTIONS = {
   serif: 'Georgia, "Times New Roman", serif',
   book: 'Charter, "Bitstream Charter", "Sitka Text", Cambria, serif',
   mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+  ruv: '"RuVSans", Arial, Helvetica, sans-serif',
 };
 
 function readJSON(key, fallback) {
@@ -241,11 +243,21 @@ async function renderInto(target, content) {
     pre.append(button);
   });
 
-  const diagramTheme = ["graphite", "terminal"].includes(state.preferences.docTheme) ? "dark" : "neutral";
+  const ruvDiagram = state.preferences.docTheme === "ruv";
+  const diagramTheme = ["graphite", "terminal"].includes(state.preferences.docTheme) ? "dark" : ruvDiagram ? "base" : "neutral";
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     theme: diagramTheme,
+    themeVariables: ruvDiagram ? {
+      fontFamily: "RuVSans, Arial, sans-serif",
+      primaryColor: "#fff4e0",
+      primaryTextColor: "#001957",
+      primaryBorderColor: "#f79506",
+      lineColor: "#109da8",
+      secondaryColor: "#e8eefb",
+      tertiaryColor: "#f4f6f8",
+    } : undefined,
     suppressErrorRendering: true,
     flowchart: { htmlLabels: false, useMaxWidth: true },
     sequence: { useMaxWidth: true },
@@ -405,7 +417,7 @@ function themeDrawerTemplate() {
         </section>
         <section class="settings-group">
           <h3>Typography & measure</h3>
-          <div class="field"><label for="fontSelect">Document font</label><select id="fontSelect"><option value="system">Modern sans</option><option value="humanist">Humanist sans</option><option value="serif">Classic serif</option><option value="book">Book serif</option><option value="mono">Monospace</option></select></div>
+          <div class="field"><label for="fontSelect">Document font</label><select id="fontSelect"><option value="system">Modern sans</option><option value="humanist">Humanist sans</option><option value="serif">Classic serif</option><option value="book">Book serif</option><option value="mono">Monospace</option><option value="ruv">R+V Sans</option></select></div>
           <div class="field"><div class="field-row"><label for="fontSize">Text size</label><output id="fontSizeOutput">17px</output></div><input id="fontSize" type="range" min="14" max="22" step="1" value="17"></div>
           <div class="field"><div class="field-row"><label for="lineHeight">Line height</label><output id="lineHeightOutput">1.72</output></div><input id="lineHeight" type="range" min="1.4" max="2" step=".02" value="1.72"></div>
           <div class="field"><div class="field-row"><label for="contentWidth">Reading width</label><output id="contentWidthOutput">760px</output></div><input id="contentWidth" type="range" min="560" max="980" step="20" value="760"></div>
@@ -1043,6 +1055,9 @@ function syncThemeControls() {
   document.querySelector("#contentWidthOutput").textContent = `${number("--doc-width", 760)}px`;
   const colors = { docBg: "--doc-bg", docText: "--doc-text", docHeading: "--doc-heading", docLink: "--doc-link", docAccent: "--doc-accent", docSurface: "--doc-surface" };
   Object.entries(colors).forEach(([id, token]) => setValue(id, rgbToHex(styles.getPropertyValue(token).trim())));
+  const currentFont = styles.getPropertyValue("--doc-font").trim();
+  const currentFontKey = Object.entries(FONT_OPTIONS).find(([, value]) => value === currentFont)?.[0];
+  if (currentFontKey) setValue("fontSelect", currentFontKey);
   setValue("appThemeSelect", state.preferences.appTheme);
   document.querySelectorAll("[data-theme-preset]").forEach((card) => card.classList.toggle("active", card.dataset.themePreset === state.preferences.docTheme));
 }

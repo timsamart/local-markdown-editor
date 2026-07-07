@@ -3,10 +3,20 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const [template, styles] = await Promise.all([
+const [template, sourceStyles, ruvSansRegular, ruvSansBold, ruvSlabRegular, ruvSlabBold] = await Promise.all([
   readFile(resolve(root, "src/template.html"), "utf8"),
   readFile(resolve(root, "src/styles.css"), "utf8"),
+  readFile(resolve(root, "src/assets/fonts/RuVSans-Regular.woff2")),
+  readFile(resolve(root, "src/assets/fonts/RuVSans-Bold.woff2")),
+  readFile(resolve(root, "src/assets/fonts/RuVSlab-Regular.woff2")),
+  readFile(resolve(root, "src/assets/fonts/RuVSlab-Bold.woff2")),
 ]);
+
+const styles = sourceStyles
+  .replace("__RUV_SANS_REGULAR__", ruvSansRegular.toString("base64"))
+  .replace("__RUV_SANS_BOLD__", ruvSansBold.toString("base64"))
+  .replace("__RUV_SLAB_REGULAR__", ruvSlabRegular.toString("base64"))
+  .replace("__RUV_SLAB_BOLD__", ruvSlabBold.toString("base64"));
 
 const result = await build({
   entryPoints: [resolve(root, "src/main.js")],
