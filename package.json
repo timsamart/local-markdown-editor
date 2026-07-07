@@ -1,0 +1,25 @@
+{
+  "name": "local-markdown-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A fully local, single-file Markdown editor and reader with Mermaid support.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "6.5.0",
+    "@codemirror/theme-one-dark": "6.1.3",
+    "codemirror": "6.0.2",
+    "dompurify": "3.4.11",
+    "markdown-it": "14.3.0",
+    "markdown-it-deflist": "3.0.1",
+    "markdown-it-footnote": "4.0.0",
+    "markdown-it-task-lists": "2.1.1",
+    "mermaid": "11.16.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1"
+  }
+}

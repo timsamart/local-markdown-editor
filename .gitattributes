@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The generated single-file bundle embeds third-party shader/template strings.
+markdown-studio.html whitespace=-blank-at-eol,-blank-at-eof
