@@ -10,6 +10,7 @@ import taskLists from "markdown-it-task-lists";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import { isMisplacedHashKey } from "./keyboard.js";
+import { isFileDragPayload } from "./file-drop.js";
 
 const BUILD_DATE = "__BUILD_DATE__";
 const APP_VERSION = "1.0.0";
@@ -248,6 +249,9 @@ async function renderInto(target, content) {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
+    // Pure SVG labels survive the strict SVG sanitizer; Mermaid's HTML labels
+    // use foreignObject and would otherwise be intentionally removed.
+    htmlLabels: false,
     theme: diagramTheme,
     themeVariables: ruvDiagram ? {
       fontFamily: "RuVSans, Arial, sans-serif",
@@ -259,7 +263,7 @@ async function renderInto(target, content) {
       tertiaryColor: "#f4f6f8",
     } : undefined,
     suppressErrorRendering: true,
-    flowchart: { htmlLabels: false, useMaxWidth: true },
+    flowchart: { useMaxWidth: true },
     sequence: { useMaxWidth: true },
   });
 
@@ -548,10 +552,12 @@ function bindCommonEvents() {
     event.target.value = "";
   });
 
-  document.addEventListener("dragenter", onDragEnter);
-  document.addEventListener("dragover", onDragOver);
-  document.addEventListener("dragleave", onDragLeave);
-  document.addEventListener("drop", onDrop);
+  // Capture at the window boundary so dropping remains available over the
+  // editor, Reader chrome, sanitized previews, and Mermaid SVG content.
+  window.addEventListener("dragenter", onDragEnter, true);
+  window.addEventListener("dragover", onDragOver, true);
+  window.addEventListener("dragleave", onDragLeave, true);
+  window.addEventListener("drop", onDrop, true);
 
   document.querySelector("#app").addEventListener("click", handleActionClick);
   document.querySelector("#app").addEventListener("keydown", (event) => {
@@ -573,10 +579,10 @@ function bindCommonEvents() {
 }
 
 function unbindDocumentEvents() {
-  document.removeEventListener("dragenter", onDragEnter);
-  document.removeEventListener("dragover", onDragOver);
-  document.removeEventListener("dragleave", onDragLeave);
-  document.removeEventListener("drop", onDrop);
+  window.removeEventListener("dragenter", onDragEnter, true);
+  window.removeEventListener("dragover", onDragOver, true);
+  window.removeEventListener("dragleave", onDragLeave, true);
+  window.removeEventListener("drop", onDrop, true);
 }
 
 function bindShellEvents() {
@@ -790,7 +796,8 @@ async function handleFiles(files, mode = "workspace", handles = []) {
   state.activeId = opened[0].id;
   if (state.surface === "welcome") showShell(mode);
   else { updateAll(); setMode(mode); }
-  toast(`Opened ${opened.length} ${opened.length === 1 ? "document" : "documents"}.`);
+  const destination = mode === "reader" ? " in Reader mode" : "";
+  toast(`Opened ${opened.length} ${opened.length === 1 ? "document" : "documents"}${destination}.`);
   scheduleSessionSave();
 }
 
@@ -1160,8 +1167,9 @@ async function onRenderedClick(event) {
 }
 
 function onDragEnter(event) {
-  if (![...event.dataTransfer?.types || []].includes("Files")) return;
+  if (!isFileDragPayload(event.dataTransfer)) return;
   event.preventDefault();
+  event.stopPropagation();
   state.dragDepth += 1;
   document.querySelector("#dropOverlay")?.classList.remove("hidden");
   const text = document.querySelector("#dropOverlayText");
@@ -1169,23 +1177,26 @@ function onDragEnter(event) {
 }
 
 function onDragOver(event) {
-  if (![...event.dataTransfer?.types || []].includes("Files")) return;
+  if (!isFileDragPayload(event.dataTransfer)) return;
   event.preventDefault();
+  event.stopPropagation();
+  document.querySelector("#dropOverlay")?.classList.remove("hidden");
   event.dataTransfer.dropEffect = "copy";
 }
 
 function onDragLeave(event) {
-  if (![...event.dataTransfer?.types || []].includes("Files")) return;
+  if (!state.dragDepth) return;
   state.dragDepth = Math.max(0, state.dragDepth - 1);
   if (!state.dragDepth) document.querySelector("#dropOverlay")?.classList.add("hidden");
 }
 
 async function onDrop(event) {
-  if (![...event.dataTransfer?.types || []].includes("Files")) return;
+  if (!isFileDragPayload(event.dataTransfer)) return;
   event.preventDefault();
+  event.stopPropagation();
   state.dragDepth = 0;
   document.querySelector("#dropOverlay")?.classList.add("hidden");
-  await handleFiles([...event.dataTransfer.files], state.mode === "reader" ? "reader" : "workspace");
+  await handleFiles(Array.from(event.dataTransfer.files || []), state.mode === "reader" ? "reader" : "workspace");
 }
 
 function toast(message, type = "success") {
