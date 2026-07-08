@@ -11,6 +11,7 @@ import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import { isMisplacedHashKey } from "./keyboard.js";
 import { isFileDragPayload } from "./file-drop.js";
+import { shouldRenderRawHtml } from "./render-options.js";
 
 const BUILD_DATE = "__BUILD_DATE__";
 const APP_VERSION = "1.0.0";
@@ -107,6 +108,7 @@ const defaultPreferences = {
   docTheme: "modern",
   viewMode: "split",
   sidebar: true,
+  renderHtml: true,
   customTokens: {},
 };
 
@@ -129,6 +131,7 @@ const state = {
 const THEMES = [
   { id: "modern", name: "Modern", desc: "Balanced & clear", colors: ["#ffffff", "#252b35", "#3157d5"] },
   { id: "editorial", name: "Editorial", desc: "Warm long-form", colors: ["#fbf8f1", "#332f29", "#a45136"] },
+  { id: "folio", name: "Folio", desc: "Old-book calm", colors: ["#f6f0e2", "#2f2a20", "#5f6f52"] },
   { id: "technical", name: "Technical", desc: "Dense & precise", colors: ["#f8fafc", "#243047", "#0074c8"] },
   { id: "graphite", name: "Graphite", desc: "Quiet dark", colors: ["#171a1e", "#d6dae1", "#8da8ff"] },
   { id: "nordic", name: "Nordic", desc: "Cool & soft", colors: ["#f3f6f6", "#2d3a3d", "#2b8587"] },
@@ -167,7 +170,7 @@ function makeDocument(name = "Untitled.md", content = "", extras = {}) {
   return { id: uid(), name, content, savedContent: content, handle: null, cursor: 0, ...extras };
 }
 
-const md = markdownit({ html: false, linkify: true, typographer: true, breaks: false })
+const md = markdownit({ html: true, linkify: true, typographer: true, breaks: false })
   .use(footnote)
   .use(deflist)
   .use(taskLists, { enabled: true, label: true, labelAfter: true });
@@ -216,10 +219,12 @@ async function renderInto(target, content) {
     return;
   }
 
+  md.set({ html: shouldRenderRawHtml(state.preferences) });
   const rendered = md.render(content, { slugs: new Map() });
   target.innerHTML = DOMPurify.sanitize(rendered, {
     USE_PROFILES: { html: true },
     ADD_ATTR: ["target", "rel", "data-mermaid", "disabled"],
+    FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
   });
 
   target.querySelectorAll("a").forEach((link) => {
@@ -440,6 +445,13 @@ function themeDrawerTemplate() {
         <section class="settings-group">
           <h3>Application</h3>
           <div class="field"><label for="appThemeSelect">Interface appearance</label><select id="appThemeSelect"><option value="system">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        </section>
+        <section class="settings-group">
+          <h3>Markdown rendering</h3>
+          <label class="check-field" for="renderHtmlToggle">
+            <input id="renderHtmlToggle" type="checkbox">
+            <span><strong>Render sanitized HTML</strong><small>Supports inline HTML tags in Markdown while still removing unsafe scriptable content.</small></span>
+          </label>
         </section>
         <div class="drawer-actions"><button class="btn" type="button" data-action="reset-theme">${icon("reset", "icon-sm")} Reset customizations</button></div>
       </div>
@@ -1048,6 +1060,12 @@ function bindThemeControls() {
     savePreferences();
     applyAppearance();
   });
+  document.querySelector("#renderHtmlToggle")?.addEventListener("change", (event) => {
+    state.preferences.renderHtml = event.target.checked;
+    savePreferences();
+    renderActiveDocument();
+    toast(event.target.checked ? "Sanitized HTML rendering enabled." : "Raw HTML rendering disabled.");
+  });
 }
 
 function syncThemeControls() {
@@ -1066,6 +1084,8 @@ function syncThemeControls() {
   const currentFontKey = Object.entries(FONT_OPTIONS).find(([, value]) => value === currentFont)?.[0];
   if (currentFontKey) setValue("fontSelect", currentFontKey);
   setValue("appThemeSelect", state.preferences.appTheme);
+  const renderHtmlToggle = document.querySelector("#renderHtmlToggle");
+  if (renderHtmlToggle) renderHtmlToggle.checked = shouldRenderRawHtml(state.preferences);
   document.querySelectorAll("[data-theme-preset]").forEach((card) => card.classList.toggle("active", card.dataset.themePreset === state.preferences.docTheme));
 }
 

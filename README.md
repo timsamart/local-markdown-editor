@@ -8,8 +8,8 @@ Open [`markdown-studio.html`](./markdown-studio.html) in a modern browser, then 
 
 - **Workspace:** multi-file tabs, CodeMirror editing, live preview, document outline, recovery drafts, direct save where supported, and download fallback
 - **Reader:** focused typography, reading progress, outline, printing, rendered Mermaid diagrams, and drop-to-read at any time
-- **Theme Studio:** nine document presets—including an embedded R+V brand style—plus custom font, size, line height, width, and color controls
-- **Local-first:** Markdown and Mermaid output are sanitized; raw HTML and remote images are disabled
+- **Theme Studio:** ten document presets—including a serene Folio reading theme and an embedded R+V brand style—plus custom font, size, line height, width, and color controls
+- **Local-first:** Markdown and Mermaid output are sanitized; sanitized raw HTML is enabled by default and can be disabled; remote images are blocked
 
 Useful shortcuts:
 
@@ -33,10 +33,16 @@ npm run build
 
 The build writes `markdown-studio.html`. End users only need that file.
 
+## Publish it
+
+The repository includes a GitHub Pages workflow that builds the app, copies the generated `markdown-studio.html` to `index.html`, and deploys that static artifact.
+
+To enable it, open the repository on GitHub, go to **Settings -> Pages**, and set **Build and deployment** to **GitHub Actions**. After that, every push to `main` publishes the latest build, and the workflow can also be run manually from the **Actions** tab.
+
 ## Security posture
 
 - No network calls are required or initiated by the application during normal use.
-- Raw Markdown HTML is disabled.
+- Raw Markdown HTML is rendered by default after sanitization and can be disabled in Theme Studio.
 - Remote images are rejected before insertion into the document.
 - Rendered Markdown and Mermaid SVG are sanitized.
 - Mermaid runs with strict security settings.

@@ -113,13 +113,14 @@ App appearance and document appearance are separate systems.
 
 1. **Editorial** — warm paper, serif body, refined long-form reading
 2. **Modern** — clean sans-serif, restrained blue accent, excellent default for business documents
-3. **Technical** — compact sans-serif, strong code treatment, diagram-friendly
-4. **Graphite** — dark neutral canvas for extended screen reading
-5. **Nordic** — cool muted palette with soft contrast
-6. **Solarized** — familiar low-fatigue light and dark variants
-7. **Terminal** — monospaced, high-contrast, intentionally utilitarian
-8. **Accessible High Contrast** — maximum clarity with non-color state cues
-9. **R+V Brand** — bundled R+V Sans and Slab typography with navy, orange, teal, and cream brand tokens
+3. **Folio** — serene old-book page, narrow measure, generous leading, and muted literary accents
+4. **Technical** — compact sans-serif, strong code treatment, diagram-friendly
+5. **Graphite** — dark neutral canvas for extended screen reading
+6. **Nordic** — cool muted palette with soft contrast
+7. **Solarized** — familiar low-fatigue light and dark variants
+8. **Terminal** — monospaced, high-contrast, intentionally utilitarian
+9. **Accessible High Contrast** — maximum clarity with non-color state cues
+10. **R+V Brand** — bundled R+V Sans and Slab typography with navy, orange, teal, and cream brand tokens
 
 The default is **Modern**, using bundled system-font stacks so the file makes no network requests.
 
@@ -176,7 +177,7 @@ All actions are searchable in plain language: “open files,” “toggle outlin
 - Zero required network access and no network calls during normal operation.
 - No accounts, analytics, tracking, cookies, or cloud synchronization.
 - Markdown HTML is sanitized before insertion into the preview.
-- Raw HTML is disabled by default and can be enabled only as an explicit setting.
+- Sanitized raw HTML is enabled by default and can be disabled as an explicit setting.
 - Mermaid uses a strict security configuration; rendered output is sanitized.
 - Remote images, remote fonts, `@import`, external embeds, and executable URLs are blocked by default.
 - A hardened mode can disable raw HTML, custom CSS, external links, and all remote resources permanently for a distributed build.
@@ -230,7 +231,7 @@ Shortcuts are discoverable beside commands and can be disabled when they conflic
 - Dragging valid, mixed, oversized, or unsupported files
 - Loading a large document
 - Mermaid rendering and Mermaid syntax error
-- Raw HTML blocked
+- Raw HTML disabled by policy
 - Missing local image
 - Read-only file or revoked file permission
 - Unsaved changes, recovery available, and recovery conflict

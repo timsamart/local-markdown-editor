@@ -322,6 +322,10 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .field select, .field input[type="text"], .field textarea { width: 100%; min-height: 36px; border: 1px solid var(--chrome-border); border-radius: 7px; padding: 0 9px; background: var(--chrome-bg); color: var(--chrome-text); }
 .field textarea { min-height: 110px; padding: 9px; resize: vertical; font-family: var(--mono-font); font-size: 11px; }
 .field input[type="range"] { width: 100%; accent-color: var(--accent); }
+.check-field { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 11px; border: 1px solid var(--chrome-border); border-radius: 10px; background: var(--chrome-bg); }
+.check-field input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
+.check-field strong { display: block; color: var(--chrome-text); font-size: 12px; }
+.check-field small { display: block; margin-top: 3px; color: var(--chrome-muted); line-height: 1.45; }
 .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .color-field { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 8px; }
 .color-field input[type="color"] { width: 32px; height: 32px; padding: 2px; border: 1px solid var(--chrome-border); border-radius: 7px; background: var(--chrome-bg); }
@@ -357,6 +361,13 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
 .drop-overlay-card p { margin: 0; color: var(--chrome-muted); }
 
 [data-doc-theme="editorial"] { --doc-bg: #fbf8f1; --doc-surface: #f1ecdf; --doc-text: #332f29; --doc-muted: #70685e; --doc-heading: #1e1b17; --doc-link: #9a4d32; --doc-border: #ded5c5; --doc-accent: #a45136; --doc-code-bg: #eee8dc; --doc-quote-bg: #f3ecdf; --doc-selection: #e8c9b8; --doc-font: Georgia, "Times New Roman", serif; --doc-heading-font: Georgia, "Times New Roman", serif; --doc-size: 18px; --doc-leading: 1.78; --doc-width: 700px; }
+[data-doc-theme="folio"] { --doc-bg: #f6f0e2; --doc-surface: #ebe1ce; --doc-text: #2f2a20; --doc-muted: #6d6252; --doc-heading: #1d1a14; --doc-link: #5f6f52; --doc-border: #d8c9ae; --doc-accent: #8a5a3c; --doc-code-bg: #eee4d2; --doc-quote-bg: #efe5d0; --doc-selection: #d9c6a3; --doc-font: Charter, "Bitstream Charter", "Sitka Text", Cambria, serif; --doc-heading-font: Georgia, "Times New Roman", serif; --doc-size: 18px; --doc-leading: 1.86; --doc-width: 680px; }
+[data-doc-theme="folio"] .markdown-body h1, [data-doc-theme="folio"] .markdown-body h2, [data-doc-theme="folio"] .markdown-body h3, [data-doc-theme="folio"] .markdown-body h4, [data-doc-theme="folio"] .markdown-body h5, [data-doc-theme="folio"] .markdown-body h6 { letter-spacing: 0; }
+[data-doc-theme="folio"] .markdown-body h1 { font-size: 2.35em; }
+[data-doc-theme="folio"] .markdown-body h2 { border-bottom-color: #d8c9ae; }
+[data-doc-theme="folio"] .markdown-body blockquote { border-left-color: #8a5a3c; border-radius: 0 6px 6px 0; }
+[data-doc-theme="folio"] .markdown-body hr { width: 44%; margin-inline: auto; background: #c8b894; }
+[data-doc-theme="folio"] .mermaid-shell { background: #efe6d4; }
 [data-doc-theme="technical"] { --doc-bg: #f8fafc; --doc-surface: #eef2f6; --doc-text: #243047; --doc-muted: #61708a; --doc-heading: #101827; --doc-link: #0068b5; --doc-border: #d8e0ea; --doc-accent: #0074c8; --doc-code-bg: #edf1f5; --doc-quote-bg: #eef7fc; --doc-selection: #c4e3f7; --doc-font: Inter, ui-sans-serif, system-ui, sans-serif; --doc-size: 16px; --doc-leading: 1.65; --doc-width: 820px; }
 [data-doc-theme="graphite"] { --doc-bg: #171a1e; --doc-surface: #20242a; --doc-text: #d6dae1; --doc-muted: #98a0ac; --doc-heading: #f2f4f7; --doc-link: #9cb5ff; --doc-border: #323842; --doc-accent: #8da8ff; --doc-code-bg: #22262d; --doc-quote-bg: #202733; --doc-selection: #354b79; }
 [data-doc-theme="nordic"] { --doc-bg: #f3f6f6; --doc-surface: #e8eeee; --doc-text: #2d3a3d; --doc-muted: #637477; --doc-heading: #17272b; --doc-link: #287f83; --doc-border: #cfdbdb; --doc-accent: #2b8587; --doc-code-bg: #e5ecec; --doc-quote-bg: #e7f1f0; --doc-selection: #bee0dd; --doc-width: 740px; }
