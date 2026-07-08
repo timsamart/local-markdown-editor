@@ -1,8 +1,10 @@
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState, Compartment } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
+import { tags } from "@lezer/highlight";
 import markdownit from "markdown-it";
 import footnote from "markdown-it-footnote";
 import deflist from "markdown-it-deflist";
@@ -11,10 +13,11 @@ import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import { isMisplacedHashKey } from "./keyboard.js";
 import { isFileDragPayload } from "./file-drop.js";
-import { shouldRenderRawHtml } from "./render-options.js";
+import { shouldRenderRawHtml, shouldUseFullWidthTables, shouldWidenRenderedTable } from "./render-options.js";
 
 const BUILD_DATE = "__BUILD_DATE__";
 const APP_VERSION = "1.0.0";
+const DEFAULT_EDITOR_THEME = "adaptive";
 
 const SAMPLE = [
   "# Welcome to Local Markdown Studio",
@@ -67,6 +70,10 @@ const ICONS = {
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
   split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  maximize: '<path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/><path d="M3 3l6 6M21 3l-6 6M21 21l-6-6M3 21l6-6"/>',
+  zoomIn: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/>',
+  zoomOut: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/>',
+  fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/><rect x="8" y="8" width="8" height="8" rx="1.5"/>',
   palette: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h2a8 8 0 0 0 0-16Z"/>',
   x: '<path d="m18 6-12 12M6 6l12 12"/>',
   chevronLeft: '<path d="m15 18-6-6 6-6"/>',
@@ -106,9 +113,11 @@ function uid() {
 const defaultPreferences = {
   appTheme: "system",
   docTheme: "modern",
+  editorTheme: DEFAULT_EDITOR_THEME,
   viewMode: "split",
   sidebar: true,
   renderHtml: true,
+  fullWidthTables: true,
   customTokens: {},
 };
 
@@ -126,6 +135,17 @@ const state = {
   pendingOpenMode: "workspace",
   dragDepth: 0,
   commandIndex: 0,
+  tableLayoutFrame: 0,
+  diagramViewer: {
+    scale: 1,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    trigger: null,
+    drag: null,
+    minimapDrag: false,
+  },
 };
 
 const THEMES = [
@@ -140,6 +160,173 @@ const THEMES = [
   { id: "contrast", name: "High Contrast", desc: "Maximum clarity", colors: ["#ffffff", "#000000", "#0033cc"] },
   { id: "ruv", name: "R+V Brand", desc: "Slab & brand palette", colors: ["#001957", "#f79506", "#00dcdc"] },
 ];
+
+const EDITOR_THEMES = [
+  { id: "adaptive", name: "Follow App", desc: "Semantic auto", colors: ["#fbfcfe", "#101418", "#3157d5"] },
+  { id: "studio-light", name: "Studio Light", desc: "Crisp daylight", colors: ["#fbfcfe", "#1d2433", "#005cc5"] },
+  { id: "studio-dark", name: "Studio Dark", desc: "Calm contrast", colors: ["#101418", "#e6edf3", "#79c0ff"] },
+  { id: "solarized", name: "Solarized", desc: "Low fatigue", colors: ["#fdf6e3", "#586e75", "#268bd2"] },
+  { id: "midnight", name: "Midnight", desc: "Focused dark", colors: ["#0b1020", "#e6edf7", "#82aaff"] },
+  { id: "contrast", name: "High Contrast", desc: "Maximum clarity", colors: ["#ffffff", "#000000", "#0033cc"] },
+];
+
+const EDITOR_THEME_PALETTES = {
+  "studio-light": {
+    dark: false,
+    bg: "#fbfcfe",
+    panel: "#f2f5f9",
+    panelStrong: "#e7edf5",
+    text: "#1d2433",
+    muted: "#687386",
+    faint: "#8792a3",
+    border: "#d8dee8",
+    caret: "#005cc5",
+    selection: "#cfe2ff",
+    activeLine: "#eef5ff",
+    matching: "#d7f5dd",
+    search: "#fff0a6",
+    searchSelected: "#ffd66b",
+    heading: "#005cc5",
+    headingStrong: "#003f8f",
+    link: "#0969da",
+    emphasis: "#8250df",
+    strong: "#0f172a",
+    mono: "#9a3412",
+    string: "#116329",
+    keyword: "#8250df",
+    atom: "#9a3412",
+    meta: "#57606a",
+    quote: "#4f6f52",
+    list: "#b35c00",
+    punctuation: "#6b7280",
+    invalid: "#b42318",
+    invalidBg: "#ffe2de",
+  },
+  "studio-dark": {
+    dark: true,
+    bg: "#101418",
+    panel: "#171c22",
+    panelStrong: "#202832",
+    text: "#e6edf3",
+    muted: "#9ba6b4",
+    faint: "#778391",
+    border: "#2f3844",
+    caret: "#79c0ff",
+    selection: "#254e78",
+    activeLine: "#182330",
+    matching: "#1f4f3a",
+    search: "#5c4b18",
+    searchSelected: "#7a5f17",
+    heading: "#79c0ff",
+    headingStrong: "#a5d6ff",
+    link: "#8ab4ff",
+    emphasis: "#d2a8ff",
+    strong: "#ffffff",
+    mono: "#ffa657",
+    string: "#a5d6a7",
+    keyword: "#d2a8ff",
+    atom: "#ffa657",
+    meta: "#9ba6b4",
+    quote: "#8ddb8c",
+    list: "#ffb86b",
+    punctuation: "#8b949e",
+    invalid: "#ffb4ab",
+    invalidBg: "#5a1f1b",
+  },
+  solarized: {
+    dark: false,
+    bg: "#fdf6e3",
+    panel: "#eee8d5",
+    panelStrong: "#e4ddc8",
+    text: "#586e75",
+    muted: "#657b83",
+    faint: "#93a1a1",
+    border: "#d8cfb8",
+    caret: "#268bd2",
+    selection: "#d7e3c6",
+    activeLine: "#f4eedc",
+    matching: "#d5e8d4",
+    search: "#f5df8d",
+    searchSelected: "#e7c45c",
+    heading: "#268bd2",
+    headingStrong: "#00629d",
+    link: "#268bd2",
+    emphasis: "#6c71c4",
+    strong: "#073642",
+    mono: "#cb4b16",
+    string: "#2aa198",
+    keyword: "#859900",
+    atom: "#b58900",
+    meta: "#657b83",
+    quote: "#859900",
+    list: "#b58900",
+    punctuation: "#839496",
+    invalid: "#dc322f",
+    invalidBg: "#f6d7d1",
+  },
+  midnight: {
+    dark: true,
+    bg: "#0b1020",
+    panel: "#11182a",
+    panelStrong: "#19223a",
+    text: "#e6edf7",
+    muted: "#aab6c8",
+    faint: "#7787a2",
+    border: "#29344f",
+    caret: "#c3e88d",
+    selection: "#334b75",
+    activeLine: "#121b31",
+    matching: "#254a36",
+    search: "#564a16",
+    searchSelected: "#74641b",
+    heading: "#82aaff",
+    headingStrong: "#b2ccff",
+    link: "#89ddff",
+    emphasis: "#c792ea",
+    strong: "#ffffff",
+    mono: "#ffcb6b",
+    string: "#c3e88d",
+    keyword: "#c792ea",
+    atom: "#f78c6c",
+    meta: "#aab6c8",
+    quote: "#80cbc4",
+    list: "#f78c6c",
+    punctuation: "#89a1c1",
+    invalid: "#ff9a9a",
+    invalidBg: "#5f2528",
+  },
+  contrast: {
+    dark: false,
+    bg: "#ffffff",
+    panel: "#f0f0f0",
+    panelStrong: "#e2e2e2",
+    text: "#000000",
+    muted: "#3f3f3f",
+    faint: "#5d5d5d",
+    border: "#000000",
+    caret: "#0033cc",
+    selection: "#ffe66d",
+    activeLine: "#f2f2ff",
+    matching: "#c9ffd8",
+    search: "#fff176",
+    searchSelected: "#ffbf47",
+    heading: "#0033cc",
+    headingStrong: "#001f80",
+    link: "#0033cc",
+    emphasis: "#5b2eb2",
+    strong: "#000000",
+    mono: "#00612f",
+    string: "#00612f",
+    keyword: "#5b2eb2",
+    atom: "#9a3412",
+    meta: "#303030",
+    quote: "#005a30",
+    list: "#7a3e00",
+    punctuation: "#303030",
+    invalid: "#b00020",
+    invalidBg: "#ffd7dc",
+  },
+};
 
 const FONT_OPTIONS = {
   system: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -212,6 +399,7 @@ const renderVersions = new WeakMap();
 
 async function renderInto(target, content) {
   if (!target) return;
+  resetWideTables(target);
   const version = (renderVersions.get(target) || 0) + 1;
   renderVersions.set(target, version);
   if (!content.trim()) {
@@ -248,6 +436,7 @@ async function renderInto(target, content) {
     button.innerHTML = `${icon("copy", "icon-sm")}<span>Copy</span>`;
     pre.append(button);
   });
+  updateWideTables(target);
 
   const ruvDiagram = state.preferences.docTheme === "ruv";
   const diagramTheme = ["graphite", "terminal"].includes(state.preferences.docTheme) ? "dark" : ruvDiagram ? "base" : "neutral";
@@ -283,12 +472,52 @@ async function renderInto(target, content) {
       if (renderVersions.get(target) !== version) return;
       node.innerHTML = DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true } });
       node.classList.remove("mermaid-loading");
+      enhanceMermaidShell(node.closest(".mermaid-shell"));
       result.bindFunctions?.(node);
     } catch (error) {
       node.className = "mermaid-error";
       node.innerHTML = `<strong>Diagram could not be rendered</strong><span>${escapeHtml(cleanMermaidError(error))}</span>`;
     }
   }
+}
+
+function enhanceMermaidShell(shell) {
+  if (!shell || shell.querySelector(".diagram-open")) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-quiet icon-btn btn-sm diagram-open";
+  button.title = "Open diagram fullscreen";
+  button.setAttribute("aria-label", "Open diagram fullscreen");
+  button.innerHTML = icon("maximize", "icon-sm");
+  shell.append(button);
+}
+
+function resetWideTables(target) {
+  target.dataset.wideTables = "false";
+  target.querySelectorAll("table.wide-table").forEach((table) => table.classList.remove("wide-table"));
+}
+
+function updateWideTables(target) {
+  if (!target) return;
+  resetWideTables(target);
+  if (!shouldUseFullWidthTables(state.preferences) || !target.getClientRects().length) return;
+
+  const wideTables = [...target.querySelectorAll("table")].filter((table) => (
+    table.clientWidth > 0 && shouldWidenRenderedTable(table.scrollWidth, table.clientWidth)
+  ));
+  if (!wideTables.length) return;
+
+  target.dataset.wideTables = "true";
+  wideTables.forEach((table) => table.classList.add("wide-table"));
+}
+
+function refreshWideTableLayouts() {
+  if (state.surface !== "shell") return;
+  cancelAnimationFrame(state.tableLayoutFrame);
+  state.tableLayoutFrame = requestAnimationFrame(() => {
+    state.tableLayoutFrame = 0;
+    document.querySelectorAll("[data-render-target]").forEach(updateWideTables);
+  });
 }
 
 function cleanMermaidError(error) {
@@ -425,6 +654,10 @@ function themeDrawerTemplate() {
           <div class="theme-grid" id="themeGrid">${THEMES.map(themeCard).join("")}</div>
         </section>
         <section class="settings-group">
+          <h3>Code editor</h3>
+          <div class="theme-grid" id="editorThemeGrid">${EDITOR_THEMES.map(editorThemeCard).join("")}</div>
+        </section>
+        <section class="settings-group">
           <h3>Typography & measure</h3>
           <div class="field"><label for="fontSelect">Document font</label><select id="fontSelect"><option value="system">Modern sans</option><option value="humanist">Humanist sans</option><option value="serif">Classic serif</option><option value="book">Book serif</option><option value="mono">Monospace</option><option value="ruv">R+V Sans</option></select></div>
           <div class="field"><div class="field-row"><label for="fontSize">Text size</label><output id="fontSizeOutput">17px</output></div><input id="fontSize" type="range" min="14" max="22" step="1" value="17"></div>
@@ -448,6 +681,10 @@ function themeDrawerTemplate() {
         </section>
         <section class="settings-group">
           <h3>Markdown rendering</h3>
+          <label class="check-field" for="fullWidthTablesToggle">
+            <input id="fullWidthTablesToggle" type="checkbox">
+            <span><strong>Full-width tables</strong><small>Only tables wider than the reading measure use the available preview and Reader width.</small></span>
+          </label>
           <label class="check-field" for="renderHtmlToggle">
             <input id="renderHtmlToggle" type="checkbox">
             <span><strong>Render sanitized HTML</strong><small>Supports inline HTML tags in Markdown while still removing unsafe scriptable content.</small></span>
@@ -463,6 +700,11 @@ function themeCard(theme) {
   return `<button class="theme-card" type="button" data-theme-preset="${theme.id}" style="--theme-card-bg:${theme.colors[0]};--theme-card-text:${theme.colors[1]}"><span class="theme-swatches">${swatches}</span><span class="theme-card-name">${theme.name}</span><span class="theme-card-desc">${theme.desc}</span></button>`;
 }
 
+function editorThemeCard(theme) {
+  const swatches = theme.colors.map((color) => `<span class="theme-swatch" style="--swatch:${color}"></span>`).join("");
+  return `<button class="theme-card" type="button" data-code-editor-theme="${theme.id}" style="--theme-card-bg:${theme.colors[0]};--theme-card-text:${theme.colors[1]}"><span class="theme-swatches">${swatches}</span><span class="theme-card-name">${theme.name}</span><span class="theme-card-desc">${theme.desc}</span></button>`;
+}
+
 function colorField(id, label, value) {
   return `<div class="field color-field"><input id="${id}" type="color" value="${value}" aria-label="${label} color"><label for="${id}">${label}</label></div>`;
 }
@@ -472,6 +714,25 @@ function globalOverlays() {
     <div class="drop-overlay hidden" id="dropOverlay"><div class="drop-overlay-card"><div class="drop-icon">${icon("files")}</div><h2>Drop to open</h2><p id="dropOverlayText">Files will open in the workspace</p></div></div>
     <dialog class="command-dialog" id="commandDialog"><div class="command-input-wrap">${icon("search")}<input class="command-input" id="commandInput" type="search" autocomplete="off" placeholder="Type a command or document name…" aria-label="Search commands"></div><div class="command-results" id="commandResults"></div></dialog>
     <dialog class="confirm-dialog" id="confirmDialog"><div class="dialog-content"><h2 id="confirmTitle"></h2><p id="confirmMessage"></p></div><div class="dialog-actions" id="confirmActions"></div></dialog>
+    <section class="diagram-viewer hidden" id="diagramViewer" role="dialog" aria-modal="true" aria-label="Mermaid diagram viewer">
+      <header class="diagram-viewer-toolbar">
+        <div class="diagram-viewer-title" id="diagramViewerTitle">Mermaid diagram</div>
+        <div class="diagram-viewer-controls" aria-label="Diagram zoom controls">
+          <button class="btn btn-quiet icon-btn" type="button" data-diagram-action="zoom-out" aria-label="Zoom out">${icon("zoomOut")}</button>
+          <output class="diagram-zoom-level" id="diagramZoomLevel">100%</output>
+          <button class="btn btn-quiet icon-btn" type="button" data-diagram-action="zoom-in" aria-label="Zoom in">${icon("zoomIn")}</button>
+          <button class="btn btn-quiet icon-btn" type="button" data-diagram-action="fit" aria-label="Fit diagram">${icon("fit")}</button>
+          <button class="btn btn-quiet icon-btn" type="button" data-diagram-action="close" aria-label="Close diagram viewer">${icon("x")}</button>
+        </div>
+      </header>
+      <div class="diagram-stage" id="diagramStage" tabindex="0">
+        <div class="diagram-canvas" id="diagramCanvas"></div>
+      </div>
+      <div class="diagram-minimap" id="diagramMinimap" aria-hidden="true">
+        <div class="diagram-minimap-content" id="diagramMinimapContent"></div>
+        <div class="diagram-minimap-viewport" id="diagramMinimapViewport"></div>
+      </div>
+    </section>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>`;
 }
 
@@ -548,13 +809,63 @@ function correctKeyboardLayoutMismatch(event, view) {
   return true;
 }
 
+function preferredEditorTheme() {
+  const preferred = state.preferences.editorTheme || DEFAULT_EDITOR_THEME;
+  return EDITOR_THEMES.some((theme) => theme.id === preferred) ? preferred : DEFAULT_EDITOR_THEME;
+}
+
+function resolvedEditorTheme() {
+  const preferred = preferredEditorTheme();
+  if (preferred !== "adaptive") return preferred;
+  return resolvedAppTheme() === "dark" ? "studio-dark" : "studio-light";
+}
+
 function editorTheme() {
-  const dark = resolvedAppTheme() === "dark";
-  return EditorView.theme({
-    "&": { backgroundColor: dark ? "#202422" : "#ffffff", color: dark ? "#edf0ed" : "#18201c" },
-    ".cm-content": { caretColor: dark ? "#9eb2ff" : "#3157d5" },
-    ".cm-gutters": { backgroundColor: dark ? "#202422" : "#ffffff", color: dark ? "#7f8982" : "#8a948e" },
-  }, { dark });
+  const palette = EDITOR_THEME_PALETTES[resolvedEditorTheme()] || EDITOR_THEME_PALETTES["studio-light"];
+  return [
+    EditorView.theme({
+      "&.cm-editor": { backgroundColor: palette.bg, color: palette.text },
+      ".cm-content": { caretColor: palette.caret },
+      ".cm-line": { color: palette.text },
+      ".cm-gutters": { backgroundColor: palette.bg, color: palette.faint, borderRightColor: palette.border },
+      ".cm-activeLine": { backgroundColor: palette.activeLine },
+      ".cm-activeLineGutter": { backgroundColor: palette.activeLine, color: palette.muted },
+      ".cm-selectionBackground, .cm-content ::selection": { backgroundColor: `${palette.selection} !important` },
+      ".cm-cursor": { borderLeftColor: palette.caret },
+      ".cm-matchingBracket": { backgroundColor: palette.matching, color: palette.strong, outline: `1px solid ${palette.border}` },
+      ".cm-nonmatchingBracket": { backgroundColor: palette.invalidBg, color: palette.invalid },
+      ".cm-foldPlaceholder": { backgroundColor: palette.panelStrong, borderColor: palette.border, color: palette.muted },
+      ".cm-searchMatch": { backgroundColor: palette.search, outline: `1px solid ${palette.searchSelected}` },
+      ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: palette.searchSelected },
+      ".cm-tooltip": { backgroundColor: `${palette.panel} !important`, color: `${palette.text} !important`, borderColor: `${palette.border} !important` },
+      ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: palette.selection, color: palette.text },
+      ".cm-panels": { backgroundColor: palette.panel, color: palette.text, borderColor: palette.border },
+      ".cm-textfield": { backgroundColor: `${palette.bg} !important`, color: `${palette.text} !important`, borderColor: `${palette.border} !important` },
+      ".cm-button": { backgroundColor: `${palette.panelStrong} !important`, color: `${palette.text} !important`, borderColor: `${palette.border} !important`, backgroundImage: "none !important" },
+    }, { dark: palette.dark }),
+    syntaxHighlighting(HighlightStyle.define([
+      { tag: tags.heading1, color: palette.headingStrong, fontWeight: "700" },
+      { tag: [tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: palette.heading, fontWeight: "700" },
+      { tag: tags.link, color: palette.link, textDecoration: "underline", textUnderlineOffset: "2px" },
+      { tag: tags.url, color: palette.link },
+      { tag: tags.emphasis, color: palette.emphasis, fontStyle: "italic" },
+      { tag: tags.strong, color: palette.strong, fontWeight: "700" },
+      { tag: tags.strikethrough, color: palette.muted, textDecoration: "line-through" },
+      { tag: tags.monospace, color: palette.mono },
+      { tag: tags.quote, color: palette.quote, fontStyle: "italic" },
+      { tag: tags.list, color: palette.text },
+      { tag: [tags.meta, tags.documentMeta, tags.annotation, tags.processingInstruction], color: palette.meta },
+      { tag: [tags.keyword, tags.operatorKeyword, tags.definitionKeyword, tags.moduleKeyword, tags.modifier], color: palette.keyword },
+      { tag: [tags.atom, tags.bool, tags.number, tags.literal], color: palette.atom },
+      { tag: [tags.string, tags.character, tags.regexp], color: palette.string },
+      { tag: [tags.escape, tags.color], color: palette.mono },
+      { tag: [tags.name, tags.variableName, tags.propertyName, tags.typeName, tags.className, tags.labelName, tags.namespace], color: palette.text },
+      { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: palette.punctuation },
+      { tag: tags.contentSeparator, color: palette.punctuation, fontWeight: "700" },
+      { tag: tags.comment, color: palette.meta, fontStyle: "italic" },
+      { tag: tags.invalid, color: palette.invalid, backgroundColor: palette.invalidBg },
+    ])),
+  ];
 }
 
 function bindCommonEvents() {
@@ -588,6 +899,313 @@ function bindCommonEvents() {
     if (item) runCommand(item.dataset.commandId);
   });
   commandDialog?.addEventListener("close", () => { state.commandIndex = 0; });
+  bindDiagramViewerEvents();
+}
+
+function bindDiagramViewerEvents() {
+  const viewer = document.querySelector("#diagramViewer");
+  const stage = document.querySelector("#diagramStage");
+  const minimap = document.querySelector("#diagramMinimap");
+  if (!viewer || !stage || viewer.dataset.bound) return;
+  viewer.dataset.bound = "true";
+
+  viewer.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-diagram-action]");
+    if (!button) return;
+    event.preventDefault();
+    const action = button.dataset.diagramAction;
+    if (action === "close") closeDiagramViewer();
+    else if (action === "fit") fitDiagramToStage();
+    else if (action === "zoom-in") zoomDiagram(1.2);
+    else if (action === "zoom-out") zoomDiagram(1 / 1.2);
+  });
+
+  stage.addEventListener("pointerdown", onDiagramStagePointerDown);
+  stage.addEventListener("pointermove", onDiagramStagePointerMove);
+  stage.addEventListener("pointerup", onDiagramStagePointerUp);
+  stage.addEventListener("pointercancel", onDiagramStagePointerUp);
+  stage.addEventListener("wheel", onDiagramWheel, { passive: false });
+
+  minimap?.addEventListener("pointerdown", onDiagramMinimapPointerDown);
+  minimap?.addEventListener("pointermove", onDiagramMinimapPointerMove);
+  minimap?.addEventListener("pointerup", onDiagramMinimapPointerUp);
+  minimap?.addEventListener("pointercancel", onDiagramMinimapPointerUp);
+  window.addEventListener("resize", updateDiagramMinimap);
+}
+
+function isDiagramViewerOpen() {
+  return !document.querySelector("#diagramViewer")?.classList.contains("hidden");
+}
+
+function openDiagramViewer(shell, trigger = document.activeElement) {
+  const sourceSvg = shell?.querySelector("svg");
+  const viewer = document.querySelector("#diagramViewer");
+  const canvas = document.querySelector("#diagramCanvas");
+  const minimapContent = document.querySelector("#diagramMinimapContent");
+  if (!sourceSvg || !viewer || !canvas || !minimapContent) {
+    toast("Diagram is still rendering.", "error");
+    return;
+  }
+
+  const size = svgNaturalSize(sourceSvg);
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const canvasSvg = cloneSvgForViewer(sourceSvg, `viewer-${stamp}`);
+  const minimapSvg = cloneSvgForViewer(sourceSvg, `map-${stamp}`);
+  canvas.style.width = `${size.width}px`;
+  canvas.style.height = `${size.height}px`;
+  canvas.replaceChildren(canvasSvg);
+  minimapContent.style.width = `${size.width}px`;
+  minimapContent.style.height = `${size.height}px`;
+  minimapContent.replaceChildren(minimapSvg);
+
+  Object.assign(state.diagramViewer, {
+    scale: 1,
+    x: 0,
+    y: 0,
+    width: size.width,
+    height: size.height,
+    trigger,
+    drag: null,
+    minimapDrag: false,
+  });
+
+  viewer.classList.remove("hidden");
+  document.body.classList.add("diagram-viewer-open");
+  document.querySelector("#diagramStage")?.focus();
+  requestAnimationFrame(fitDiagramToStage);
+}
+
+function closeDiagramViewer() {
+  if (!isDiagramViewerOpen()) return;
+  document.querySelector("#diagramViewer")?.classList.add("hidden");
+  document.body.classList.remove("diagram-viewer-open");
+  document.querySelector("#diagramCanvas")?.replaceChildren();
+  document.querySelector("#diagramMinimapContent")?.replaceChildren();
+  const trigger = state.diagramViewer.trigger;
+  Object.assign(state.diagramViewer, { drag: null, minimapDrag: false, trigger: null });
+  if (trigger?.isConnected) trigger.focus();
+}
+
+function cloneSvgForViewer(sourceSvg, suffix) {
+  const clone = sourceSvg.cloneNode(true);
+  uniquifySvgIds(clone, suffix);
+  clone.removeAttribute("width");
+  clone.removeAttribute("height");
+  clone.style.width = "100%";
+  clone.style.height = "100%";
+  clone.style.maxWidth = "none";
+  clone.style.display = "block";
+  return clone;
+}
+
+function svgNaturalSize(svg) {
+  const viewBox = parseSvgViewBox(svg);
+  const width = parseSvgLength(svg.getAttribute("width")) || viewBox?.width || 960;
+  const height = parseSvgLength(svg.getAttribute("height")) || viewBox?.height || 640;
+  return { width: Math.max(1, width), height: Math.max(1, height) };
+}
+
+function parseSvgViewBox(svg) {
+  const values = (svg.getAttribute("viewBox") || "").trim().split(/[,\s]+/).map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) return null;
+  return { x: values[0], y: values[1], width: Math.abs(values[2]), height: Math.abs(values[3]) };
+}
+
+function parseSvgLength(value) {
+  if (!value || value.includes("%")) return 0;
+  const match = /^([\d.]+)/.exec(value);
+  return match ? Number(match[1]) : 0;
+}
+
+function uniquifySvgIds(svg, suffix) {
+  const replacements = new Map();
+  svg.querySelectorAll("[id]").forEach((node) => {
+    const next = `${node.id}-${suffix}`;
+    replacements.set(node.id, next);
+    node.id = next;
+  });
+  if (!replacements.size) return;
+
+  const referenceAttrs = ["href", "xlink:href", "fill", "stroke", "filter", "clip-path", "mask", "marker-start", "marker-mid", "marker-end", "style"];
+  svg.querySelectorAll("*").forEach((node) => {
+    referenceAttrs.forEach((attr) => {
+      const value = node.getAttribute(attr);
+      if (value) node.setAttribute(attr, replaceSvgIdReferences(value, replacements));
+    });
+  });
+  svg.querySelectorAll("style").forEach((node) => {
+    node.textContent = replaceSvgIdReferences(node.textContent || "", replacements);
+  });
+}
+
+function replaceSvgIdReferences(value, replacements) {
+  let result = value;
+  replacements.forEach((next, previous) => {
+    const escaped = escapeRegExp(previous);
+    result = result
+      .replace(new RegExp(`url\\(#${escaped}\\)`, "g"), `url(#${next})`)
+      .replace(new RegExp(`(["'])#${escaped}\\1`, "g"), `$1#${next}$1`)
+      .replace(new RegExp(`(^|\\s)#${escaped}(?=\\s|$)`, "g"), `$1#${next}`);
+  });
+  return result;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function fitDiagramToStage() {
+  const stage = document.querySelector("#diagramStage");
+  if (!stage || !isDiagramViewerOpen()) return;
+  const viewer = state.diagramViewer;
+  const availableWidth = Math.max(1, stage.clientWidth - 72);
+  const availableHeight = Math.max(1, stage.clientHeight - 72);
+  viewer.scale = clamp(Math.min(availableWidth / viewer.width, availableHeight / viewer.height), 0.08, 4);
+  viewer.x = (stage.clientWidth - viewer.width * viewer.scale) / 2;
+  viewer.y = (stage.clientHeight - viewer.height * viewer.scale) / 2;
+  applyDiagramTransform();
+}
+
+function zoomDiagram(factor, point = null) {
+  const stage = document.querySelector("#diagramStage");
+  if (!stage || !isDiagramViewerOpen()) return;
+  const rect = stage.getBoundingClientRect();
+  const viewer = state.diagramViewer;
+  const originX = point?.clientX ?? rect.left + rect.width / 2;
+  const originY = point?.clientY ?? rect.top + rect.height / 2;
+  const localX = originX - rect.left;
+  const localY = originY - rect.top;
+  const contentX = (localX - viewer.x) / viewer.scale;
+  const contentY = (localY - viewer.y) / viewer.scale;
+  const nextScale = clamp(viewer.scale * factor, 0.08, 8);
+  viewer.x = localX - contentX * nextScale;
+  viewer.y = localY - contentY * nextScale;
+  viewer.scale = nextScale;
+  applyDiagramTransform();
+}
+
+function applyDiagramTransform() {
+  const canvas = document.querySelector("#diagramCanvas");
+  const zoomLevel = document.querySelector("#diagramZoomLevel");
+  const viewer = state.diagramViewer;
+  if (!canvas) return;
+  canvas.style.transform = `translate(${viewer.x}px, ${viewer.y}px) scale(${viewer.scale})`;
+  if (zoomLevel) zoomLevel.textContent = `${Math.round(viewer.scale * 100)}%`;
+  updateDiagramMinimap();
+}
+
+function onDiagramWheel(event) {
+  if (!isDiagramViewerOpen()) return;
+  event.preventDefault();
+  zoomDiagram(event.deltaY < 0 ? 1.12 : 1 / 1.12, event);
+}
+
+function onDiagramStagePointerDown(event) {
+  if (!isDiagramViewerOpen() || event.button !== 0) return;
+  const viewer = state.diagramViewer;
+  viewer.drag = { id: event.pointerId, startX: event.clientX, startY: event.clientY, x: viewer.x, y: viewer.y };
+  event.currentTarget.setPointerCapture(event.pointerId);
+  event.currentTarget.classList.add("dragging");
+}
+
+function onDiagramStagePointerMove(event) {
+  const drag = state.diagramViewer.drag;
+  if (!drag || drag.id !== event.pointerId) return;
+  state.diagramViewer.x = drag.x + event.clientX - drag.startX;
+  state.diagramViewer.y = drag.y + event.clientY - drag.startY;
+  applyDiagramTransform();
+}
+
+function onDiagramStagePointerUp(event) {
+  const stage = event.currentTarget;
+  if (stage.hasPointerCapture?.(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+  state.diagramViewer.drag = null;
+  stage.classList.remove("dragging");
+}
+
+function minimapGeometry() {
+  const minimap = document.querySelector("#diagramMinimap");
+  const rect = minimap?.getBoundingClientRect();
+  if (!rect?.width || !rect?.height) return null;
+  const viewer = state.diagramViewer;
+  const scale = Math.min((rect.width - 14) / viewer.width, (rect.height - 14) / viewer.height);
+  const width = viewer.width * scale;
+  const height = viewer.height * scale;
+  return { rect, scale, offsetX: (rect.width - width) / 2, offsetY: (rect.height - height) / 2 };
+}
+
+function updateDiagramMinimap() {
+  const stage = document.querySelector("#diagramStage");
+  const content = document.querySelector("#diagramMinimapContent");
+  const viewport = document.querySelector("#diagramMinimapViewport");
+  if (!stage || !content || !viewport || !isDiagramViewerOpen()) return;
+  const geometry = minimapGeometry();
+  if (!geometry) return;
+  const viewer = state.diagramViewer;
+  content.style.transform = `translate(${geometry.offsetX}px, ${geometry.offsetY}px) scale(${geometry.scale})`;
+
+  const visibleLeft = -viewer.x / viewer.scale;
+  const visibleTop = -viewer.y / viewer.scale;
+  const visibleRight = visibleLeft + stage.clientWidth / viewer.scale;
+  const visibleBottom = visibleTop + stage.clientHeight / viewer.scale;
+  const left = clamp(geometry.offsetX + visibleLeft * geometry.scale, 2, geometry.rect.width - 2);
+  const top = clamp(geometry.offsetY + visibleTop * geometry.scale, 2, geometry.rect.height - 2);
+  const right = clamp(geometry.offsetX + visibleRight * geometry.scale, 2, geometry.rect.width - 2);
+  const bottom = clamp(geometry.offsetY + visibleBottom * geometry.scale, 2, geometry.rect.height - 2);
+  viewport.style.left = `${left}px`;
+  viewport.style.top = `${top}px`;
+  viewport.style.width = `${Math.max(8, right - left)}px`;
+  viewport.style.height = `${Math.max(8, bottom - top)}px`;
+}
+
+function onDiagramMinimapPointerDown(event) {
+  if (!isDiagramViewerOpen()) return;
+  state.diagramViewer.minimapDrag = true;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  centerDiagramFromMinimap(event);
+}
+
+function onDiagramMinimapPointerMove(event) {
+  if (!state.diagramViewer.minimapDrag) return;
+  centerDiagramFromMinimap(event);
+}
+
+function onDiagramMinimapPointerUp(event) {
+  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  state.diagramViewer.minimapDrag = false;
+}
+
+function centerDiagramFromMinimap(event) {
+  const stage = document.querySelector("#diagramStage");
+  const geometry = minimapGeometry();
+  if (!stage || !geometry) return;
+  event.preventDefault();
+  const viewer = state.diagramViewer;
+  const contentX = clamp((event.clientX - geometry.rect.left - geometry.offsetX) / geometry.scale, 0, viewer.width);
+  const contentY = clamp((event.clientY - geometry.rect.top - geometry.offsetY) / geometry.scale, 0, viewer.height);
+  viewer.x = stage.clientWidth / 2 - contentX * viewer.scale;
+  viewer.y = stage.clientHeight / 2 - contentY * viewer.scale;
+  applyDiagramTransform();
+}
+
+function handleDiagramViewerKeydown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeDiagramViewer();
+  } else if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    zoomDiagram(1.2);
+  } else if (event.key === "-" || event.key === "_") {
+    event.preventDefault();
+    zoomDiagram(1 / 1.2);
+  } else if (event.key === "0") {
+    event.preventDefault();
+    fitDiagramToStage();
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function unbindDocumentEvents() {
@@ -609,6 +1227,10 @@ function bindShellEvents() {
   document.querySelector("#themeGrid")?.addEventListener("click", (event) => {
     const card = event.target.closest("[data-theme-preset]");
     if (card) selectDocumentTheme(card.dataset.themePreset);
+  });
+  document.querySelector("#editorThemeGrid")?.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-code-editor-theme]");
+    if (card) selectEditorTheme(card.dataset.codeEditorTheme);
   });
   bindThemeControls();
   bindSplitter();
@@ -898,6 +1520,7 @@ function setMode(mode) {
     sidebar.classList.toggle("sidebar-hidden", narrow || !state.preferences.sidebar);
     requestAnimationFrame(() => state.editor?.requestMeasure());
   }
+  refreshWideTableLayouts();
 }
 
 function setViewMode(mode) {
@@ -916,6 +1539,7 @@ function updateViewModeUI() {
   });
   if (mode !== "edit") renderActiveDocument();
   requestAnimationFrame(() => state.editor?.requestMeasure());
+  refreshWideTableLayouts();
 }
 
 function toggleSidebar() {
@@ -923,12 +1547,14 @@ function toggleSidebar() {
   const grid = document.querySelector("#workspaceGrid");
   if (matchMedia("(max-width: 760px)").matches) {
     grid?.classList.toggle("sidebar-hidden");
+    refreshWideTableLayouts();
     return;
   }
   state.preferences.sidebar = !state.preferences.sidebar;
   savePreferences();
   grid?.classList.toggle("sidebar-hidden", !state.preferences.sidebar);
   requestAnimationFrame(() => state.editor?.requestMeasure());
+  refreshWideTableLayouts();
 }
 
 function toggleReaderOutline() {
@@ -961,10 +1587,12 @@ function bindSplitter() {
     const ratio = Math.max(.25, Math.min(.75, (event.clientX - rect.left) / rect.width));
     stage.style.gridTemplateColumns = `${ratio}fr 5px ${1 - ratio}fr`;
     state.editor?.requestMeasure();
+    refreshWideTableLayouts();
   });
   splitter.addEventListener("pointerup", (event) => {
     if (splitter.hasPointerCapture(event.pointerId)) splitter.releasePointerCapture(event.pointerId);
     splitter.classList.remove("dragging");
+    refreshWideTableLayouts();
   });
 }
 
@@ -1012,6 +1640,14 @@ function selectDocumentTheme(theme) {
   syncThemeControls();
 }
 
+function selectEditorTheme(theme) {
+  if (!EDITOR_THEMES.some((option) => option.id === theme)) return;
+  state.preferences.editorTheme = theme;
+  savePreferences();
+  applyAppearance();
+  syncThemeControls();
+}
+
 function resolvedAppTheme() {
   if (state.preferences.appTheme !== "system") return state.preferences.appTheme;
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -1020,12 +1656,14 @@ function resolvedAppTheme() {
 function applyAppearance() {
   document.documentElement.dataset.appTheme = resolvedAppTheme();
   document.documentElement.dataset.docTheme = state.preferences.docTheme;
+  document.documentElement.dataset.editorTheme = resolvedEditorTheme();
   const allowedTokens = ["doc-font", "doc-size", "doc-leading", "doc-width", "doc-bg", "doc-text", "doc-heading", "doc-link", "doc-accent", "doc-surface"];
   allowedTokens.forEach((token) => document.documentElement.style.removeProperty(`--${token}`));
   Object.entries(state.preferences.customTokens || {}).forEach(([token, value]) => {
     if (allowedTokens.includes(token)) document.documentElement.style.setProperty(`--${token}`, value);
   });
   document.querySelectorAll("[data-theme-preset]").forEach((card) => card.classList.toggle("active", card.dataset.themePreset === state.preferences.docTheme));
+  document.querySelectorAll("[data-code-editor-theme]").forEach((card) => card.classList.toggle("active", card.dataset.codeEditorTheme === preferredEditorTheme()));
   if (state.editor) state.editor.dispatch({ effects: state.editorThemeCompartment.reconfigure(editorTheme()) });
 }
 
@@ -1048,12 +1686,14 @@ function bindThemeControls() {
       document.documentElement.style.setProperty(`--${token}`, value);
       if (outputId) document.querySelector(`#${outputId}`).textContent = outputFormat(event.target.value);
       savePreferences();
+      refreshWideTableLayouts();
     });
   });
   document.querySelector("#fontSelect")?.addEventListener("change", (event) => {
     state.preferences.customTokens["doc-font"] = FONT_OPTIONS[event.target.value];
     document.documentElement.style.setProperty("--doc-font", FONT_OPTIONS[event.target.value]);
     savePreferences();
+    refreshWideTableLayouts();
   });
   document.querySelector("#appThemeSelect")?.addEventListener("change", (event) => {
     state.preferences.appTheme = event.target.value;
@@ -1065,6 +1705,12 @@ function bindThemeControls() {
     savePreferences();
     renderActiveDocument();
     toast(event.target.checked ? "Sanitized HTML rendering enabled." : "Raw HTML rendering disabled.");
+  });
+  document.querySelector("#fullWidthTablesToggle")?.addEventListener("change", (event) => {
+    state.preferences.fullWidthTables = event.target.checked;
+    savePreferences();
+    renderActiveDocument();
+    toast(event.target.checked ? "Full-width tables enabled." : "Tables constrained to reading width.");
   });
 }
 
@@ -1086,7 +1732,10 @@ function syncThemeControls() {
   setValue("appThemeSelect", state.preferences.appTheme);
   const renderHtmlToggle = document.querySelector("#renderHtmlToggle");
   if (renderHtmlToggle) renderHtmlToggle.checked = shouldRenderRawHtml(state.preferences);
+  const fullWidthTablesToggle = document.querySelector("#fullWidthTablesToggle");
+  if (fullWidthTablesToggle) fullWidthTablesToggle.checked = shouldUseFullWidthTables(state.preferences);
   document.querySelectorAll("[data-theme-preset]").forEach((card) => card.classList.toggle("active", card.dataset.themePreset === state.preferences.docTheme));
+  document.querySelectorAll("[data-code-editor-theme]").forEach((card) => card.classList.toggle("active", card.dataset.codeEditorTheme === preferredEditorTheme()));
 }
 
 function rgbToHex(value) {
@@ -1170,6 +1819,13 @@ async function confirmChoice({ title, message, choices }) {
 }
 
 async function onRenderedClick(event) {
+  const diagramOpen = event.target.closest(".diagram-open");
+  if (diagramOpen) {
+    event.preventDefault();
+    openDiagramViewer(diagramOpen.closest(".mermaid-shell"), diagramOpen);
+    return;
+  }
+
   const copy = event.target.closest(".code-copy");
   if (copy) {
     const code = copy.closest("pre")?.querySelector("code")?.textContent || "";
@@ -1230,6 +1886,11 @@ function toast(message, type = "success") {
 }
 
 function onGlobalKeydown(event) {
+  if (isDiagramViewerOpen()) {
+    handleDiagramViewerKeydown(event);
+    return;
+  }
+
   const mod = event.ctrlKey || event.metaKey;
   if (!mod) {
     if (event.key === "Escape" && state.mode === "reader") setMode("workspace");

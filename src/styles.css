@@ -242,6 +242,8 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 
 .render-surface { min-height: 100%; background: var(--doc-bg); color: var(--doc-text); }
 .markdown-body { width: min(100%, calc(var(--doc-width) + 96px)); margin: 0 auto; padding: 58px 48px 100px; font-family: var(--doc-font); font-size: var(--doc-size); line-height: var(--doc-leading); color: var(--doc-text); overflow-wrap: break-word; }
+.markdown-body[data-wide-tables="true"] { width: 100%; }
+.markdown-body[data-wide-tables="true"] > :not(.wide-table):not(.render-empty) { max-width: var(--doc-width); margin-left: auto; margin-right: auto; }
 .markdown-body > :first-child { margin-top: 0 !important; }
 .markdown-body > :last-child { margin-bottom: 0 !important; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { color: var(--doc-heading); font-family: var(--doc-heading-font); line-height: 1.22; letter-spacing: -.025em; scroll-margin-top: 82px; }
@@ -266,6 +268,7 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .code-copy { position: absolute; top: 8px; right: 8px; opacity: 0; }
 .markdown-body pre:hover .code-copy, .markdown-body pre:focus-within .code-copy { opacity: 1; }
 .markdown-body table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; font-size: .92em; }
+.markdown-body table.wide-table { max-width: none; }
 .markdown-body th, .markdown-body td { min-width: 110px; padding: .58em .72em; border: 1px solid var(--doc-border); text-align: left; }
 .markdown-body th { background: var(--doc-surface); color: var(--doc-heading); font-weight: 680; }
 .markdown-body tr:nth-child(even) td { background: color-mix(in srgb, var(--doc-surface) 55%, transparent); }
@@ -278,6 +281,8 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .footnotes-sep { margin-bottom: 1.4em !important; }
 .mermaid-shell { position: relative; min-height: 100px; margin: 1.4em 0; padding: 18px; border: 1px solid var(--doc-border); border-radius: 12px; background: var(--doc-surface); overflow: auto; text-align: center; }
 .mermaid-shell svg { max-width: 100%; height: auto; }
+.diagram-open { position: absolute; z-index: 2; top: 8px; right: 8px; width: 30px; min-height: 30px; opacity: 0; background: color-mix(in srgb, var(--chrome-surface) 92%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(10px); }
+.mermaid-shell:hover .diagram-open, .mermaid-shell:focus-within .diagram-open { opacity: 1; }
 .mermaid-loading { min-height: 90px; display: grid; place-items: center; color: var(--doc-muted); font-size: .83em; }
 .mermaid-error { padding: 16px; border-left: 3px solid var(--danger); border-radius: 7px; background: color-mix(in srgb, var(--danger) 8%, var(--doc-bg)); color: var(--doc-text); text-align: left; }
 .mermaid-error strong { display: block; margin-bottom: 6px; color: var(--danger); }
@@ -313,8 +318,8 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .theme-swatches { display: flex; gap: 4px; margin-bottom: 14px; }
 .theme-swatch { width: 14px; height: 14px; border: 1px solid rgba(127,127,127,.25); border-radius: 50%; background: var(--swatch); }
-.theme-card-name { font-weight: 700; font-size: 12px; }
-.theme-card-desc { margin-top: 3px; opacity: .66; font-size: 10px; }
+.theme-card-name { display: block; font-weight: 700; font-size: 12px; }
+.theme-card-desc { display: block; margin-top: 3px; opacity: .66; font-size: 10px; }
 .field { display: grid; gap: 6px; margin-bottom: 13px; }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .field label, .field-label { color: var(--chrome-muted); font-size: 12px; font-weight: 580; }
@@ -323,6 +328,7 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .field textarea { min-height: 110px; padding: 9px; resize: vertical; font-family: var(--mono-font); font-size: 11px; }
 .field input[type="range"] { width: 100%; accent-color: var(--accent); }
 .check-field { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 11px; border: 1px solid var(--chrome-border); border-radius: 10px; background: var(--chrome-bg); }
+.check-field + .check-field { margin-top: 10px; }
 .check-field input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
 .check-field strong { display: block; color: var(--chrome-text); font-size: 12px; }
 .check-field small { display: block; margin-top: 3px; color: var(--chrome-muted); line-height: 1.45; }
@@ -348,6 +354,20 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
 .dialog-content h2 { margin: 0 0 8px; font-size: 19px; letter-spacing: -.025em; }
 .dialog-content p { margin: 0; color: var(--chrome-muted); line-height: 1.55; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 24px 20px; }
+.diagram-viewer { position: fixed; z-index: 220; inset: 0; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--doc-bg); color: var(--doc-text); }
+.diagram-viewer-toolbar { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 18px; border-bottom: 1px solid var(--chrome-border); background: color-mix(in srgb, var(--chrome-surface) 94%, transparent); box-shadow: var(--shadow-sm); }
+.diagram-viewer-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chrome-text); font-size: 13px; font-weight: 680; }
+.diagram-viewer-controls { display: inline-flex; align-items: center; gap: 4px; }
+.diagram-zoom-level { min-width: 52px; color: var(--chrome-muted); text-align: center; font-size: 12px; font-weight: 650; }
+.diagram-stage { min-width: 0; min-height: 0; position: relative; overflow: hidden; cursor: grab; touch-action: none; background-image: radial-gradient(color-mix(in srgb, var(--doc-border) 70%, transparent) .8px, transparent .8px); background-size: 18px 18px; }
+.diagram-stage.dragging { cursor: grabbing; }
+.diagram-stage:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+.diagram-canvas { position: absolute; inset: 0 auto auto 0; transform-origin: 0 0; will-change: transform; }
+.diagram-canvas svg { display: block; width: 100%; height: 100%; max-width: none; }
+.diagram-minimap { position: absolute; z-index: 2; right: 18px; bottom: 18px; width: 190px; height: 126px; overflow: hidden; border: 1px solid var(--chrome-border); border-radius: 8px; background: color-mix(in srgb, var(--chrome-surface) 92%, transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(14px); touch-action: none; cursor: crosshair; }
+.diagram-minimap-content { position: absolute; inset: 0 auto auto 0; transform-origin: 0 0; opacity: .78; }
+.diagram-minimap-content svg { display: block; width: 100%; height: 100%; max-width: none; }
+.diagram-minimap-viewport { position: absolute; min-width: 8px; min-height: 8px; border: 2px solid var(--accent); border-radius: 3px; background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--chrome-surface) 80%, transparent); pointer-events: none; }
 .toast-region { position: fixed; z-index: 100; right: 14px; bottom: 42px; width: min(370px, calc(100% - 28px)); display: grid; gap: 8px; pointer-events: none; }
 .toast { padding: 11px 13px; border: 1px solid var(--chrome-border); border-radius: 9px; background: var(--chrome-surface); box-shadow: var(--shadow-lg); display: flex; align-items: flex-start; gap: 9px; color: var(--chrome-text); animation: toast-in .18s ease; }
 .toast .icon { color: var(--success); }
@@ -389,6 +409,10 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
 @keyframes slide-in { from { transform: translateX(20px); opacity: 0; } }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
 
+@media (hover: none) {
+  .diagram-open { opacity: 1; }
+}
+
 @media (max-width: 980px) {
   .brand-word { display: none; }
   .command-trigger { width: 42px; padding: 0; justify-content: center; }
@@ -421,6 +445,7 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
   .markdown-body { padding: 50px 23px 90px; }
   .reader .markdown-body { padding-top: 96px; }
   .reader-outline { left: 10px; right: 10px; width: auto; }
+  .diagram-minimap { right: 10px; bottom: 10px; width: 142px; height: 94px; }
   .statusbar .hide-mobile { display: none; }
 }
 
@@ -440,14 +465,19 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
   .tab { min-width: 125px; }
   .markdown-body { font-size: calc(var(--doc-size) - 1px); padding-inline: 18px; }
   .color-grid { grid-template-columns: 1fr; }
+  .diagram-viewer-toolbar { padding-inline: 8px; }
+  .diagram-viewer-title { display: none; }
+  .diagram-zoom-level { min-width: 44px; font-size: 11px; }
+  .diagram-minimap { width: 120px; height: 80px; }
 }
 
 @media print {
   body { overflow: visible; background: var(--doc-bg); }
-  .topbar, .sidebar, .tabs-row, .statusbar, .reader-header, .reader-progress, .theme-drawer, .toast-region { display: none !important; }
+  .topbar, .sidebar, .tabs-row, .statusbar, .reader-header, .reader-progress, .theme-drawer, .diagram-viewer, .toast-region { display: none !important; }
   .shell, .workspace-grid, .work-area, .workspace, .reader, .editor-stage, .preview-pane { display: block !important; height: auto !important; overflow: visible !important; }
   .editor-pane, .splitter { display: none !important; }
   .markdown-body { max-width: none; width: auto; padding: 0; }
+  .markdown-body[data-wide-tables="true"] > :not(.wide-table):not(.render-empty) { max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

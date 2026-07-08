@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import markdownit from "markdown-it";
 import { isMisplacedHashKey } from "../src/keyboard.js";
 import { isFileDragPayload } from "../src/file-drop.js";
-import { shouldRenderRawHtml } from "../src/render-options.js";
+import { shouldRenderRawHtml, shouldUseFullWidthTables, shouldWidenRenderedTable } from "../src/render-options.js";
 
 const key = (overrides) => ({
   key: "'",
@@ -29,6 +29,12 @@ assert.equal(isFileDragPayload({ types: ["text/plain"], files: [], items: [{ kin
 assert.equal(shouldRenderRawHtml({}), true, "renders sanitized raw HTML by default");
 assert.equal(shouldRenderRawHtml({ renderHtml: true }), true, "keeps explicit raw HTML rendering enabled");
 assert.equal(shouldRenderRawHtml({ renderHtml: false }), false, "honors strict Markdown-only rendering");
+assert.equal(shouldUseFullWidthTables({}), true, "uses full-width tables by default");
+assert.equal(shouldUseFullWidthTables({ fullWidthTables: true }), true, "keeps explicit full-width tables enabled");
+assert.equal(shouldUseFullWidthTables({ fullWidthTables: false }), false, "honors constrained table rendering");
+assert.equal(shouldWidenRenderedTable(900, 760), true, "widens tables that overflow the reading width");
+assert.equal(shouldWidenRenderedTable(760, 760), false, "keeps fitting tables in the reading width");
+assert.equal(shouldWidenRenderedTable(760.5, 760), false, "ignores sub-pixel table overflow noise");
 
 const renderer = markdownit({ html: true });
 renderer.set({ html: shouldRenderRawHtml({}) });
