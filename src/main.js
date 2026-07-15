@@ -14,6 +14,15 @@ import mermaid from "mermaid";
 import { isMisplacedHashKey } from "./keyboard.js";
 import { isFileDragPayload } from "./file-drop.js";
 import { shouldRenderRawHtml, shouldUseFullWidthTables, shouldWidenRenderedTable } from "./render-options.js";
+import {
+  slugify,
+  isAutoNameCandidate,
+  extractOutlineEntries,
+  extractPrimaryHeading,
+  headingToFilename,
+  normalizeDocumentName,
+  renameHeadingInContent,
+} from "./document-name.js";
 
 const BUILD_DATE = "__BUILD_DATE__";
 const APP_VERSION = "1.0.0";
@@ -123,6 +132,7 @@ const defaultPreferences = {
 
 const state = {
   docs: [],
+  archivedDocs: [],
   activeId: null,
   surface: "welcome",
   mode: "workspace",
@@ -136,6 +146,10 @@ const state = {
   dragDepth: 0,
   commandIndex: 0,
   tableLayoutFrame: 0,
+  selectedDocIds: new Set(),
+  selectionAnchorId: null,
+  archiveExpanded: false,
+  docMenuOpen: false,
   diagramViewer: {
     scale: 1,
     x: 0,
@@ -354,7 +368,17 @@ function isDirty(doc) {
 }
 
 function makeDocument(name = "Untitled.md", content = "", extras = {}) {
-  return { id: uid(), name, content, savedContent: content, handle: null, cursor: 0, ...extras };
+  const { nameCustomized, savedContent, ...rest } = extras;
+  return {
+    id: uid(),
+    name,
+    content,
+    savedContent: savedContent ?? content,
+    handle: null,
+    cursor: 0,
+    ...rest,
+    nameCustomized: nameCustomized ?? !isAutoNameCandidate(name),
+  };
 }
 
 const md = markdownit({ html: true, linkify: true, typographer: true, breaks: false })
@@ -390,10 +414,6 @@ md.renderer.rules.heading_open = (tokens, idx, options, env) => {
   const id = count ? `${base}-${count + 1}` : base;
   return `<${level} id="${escapeHtml(id)}">`;
 };
-
-function slugify(value) {
-  return value.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, "-").replace(/-+/g, "-") || "section";
-}
 
 const renderVersions = new WeakMap();
 
@@ -571,7 +591,7 @@ function appTemplateShell() {
   return `
     <div class="shell" id="main-content">
       <header class="topbar">
-        <button class="btn btn-quiet icon-btn" type="button" data-action="toggle-sidebar" aria-label="Toggle document sidebar">${icon("menu")}</button>
+        <button class="btn btn-quiet icon-btn" type="button" data-action="toggle-sidebar" aria-label="Toggle outline sidebar">${icon("menu")}</button>
         <div class="brand">${icon("logo")}<span class="brand-word">Local Markdown Studio</span></div>
         <button class="btn btn-quiet icon-btn" type="button" data-action="open" aria-label="Open Markdown files">${icon("folder")}</button>
         <button class="btn btn-quiet icon-btn" type="button" data-action="new" aria-label="New document">${icon("plus")}</button>
@@ -588,25 +608,37 @@ function appTemplateShell() {
       </header>
       <div class="workspace-grid" id="workspaceGrid">
         <aside class="sidebar" aria-label="Documents and outline">
-          <section class="sidebar-section">
-            <div class="section-heading"><span>Documents</span><button class="btn btn-quiet icon-btn btn-sm" type="button" data-action="new" aria-label="New document">${icon("plus", "icon-sm")}</button></div>
+          <section class="sidebar-section sidebar-docs">
+            <div class="section-heading">
+              <span>Documents</span>
+              <div class="section-actions">
+                <button class="btn btn-quiet icon-btn btn-sm" type="button" data-action="doc-menu" aria-label="Document actions" aria-haspopup="menu" aria-expanded="false">${icon("list", "icon-sm")}</button>
+                <button class="btn btn-quiet icon-btn btn-sm" type="button" data-action="new" aria-label="New document">${icon("plus", "icon-sm")}</button>
+              </div>
+            </div>
+            <div class="doc-rail-actions hidden" id="docRailActions" aria-live="polite"></div>
+            <div class="doc-overflow-menu hidden" id="docOverflowMenu" role="menu" aria-label="Document actions"></div>
             <div class="document-list" id="documentList"></div>
           </section>
-          <section class="sidebar-section">
+          <section class="sidebar-section sidebar-outline">
             <div class="section-heading"><span>Outline</span><span id="outlineCount"></span></div>
             <nav class="outline-list" id="outlineList" aria-label="Document outline"></nav>
+          </section>
+          <section class="sidebar-section sidebar-archive">
+            <button class="section-heading archive-toggle" type="button" data-action="toggle-archive" aria-expanded="false">
+              <span>Archived</span>
+              <span class="archive-count" id="archiveCount"></span>
+              ${icon("chevronDown", "icon-sm")}
+            </button>
+            <div class="archive-list hidden" id="archiveList" aria-label="Archived documents"></div>
           </section>
         </aside>
         <main class="work-area">
           <section class="workspace" id="workspaceSurface">
-            <div class="tabs-row">
-              <div class="tabs" id="tabs" role="tablist" aria-label="Open documents"></div>
-              <div class="tabs-actions">
-                <div class="mobile-view-switch" aria-label="Mobile document view">
-                  <button class="btn btn-quiet icon-btn btn-sm" type="button" data-view="edit" aria-label="Show editor">${icon("edit", "icon-sm")}</button>
-                  <button class="btn btn-quiet icon-btn btn-sm" type="button" data-view="preview" aria-label="Show preview">${icon("eye", "icon-sm")}</button>
-                </div>
-                <button class="btn btn-quiet icon-btn btn-sm desktop-new-tab" type="button" data-action="new" aria-label="New tab">${icon("plus", "icon-sm")}</button>
+            <div class="workspace-toolbar" id="workspaceToolbar">
+              <div class="mobile-view-switch" aria-label="Mobile document view">
+                <button class="btn btn-quiet icon-btn btn-sm" type="button" data-view="edit" aria-label="Show editor">${icon("edit", "icon-sm")}</button>
+                <button class="btn btn-quiet icon-btn btn-sm" type="button" data-view="preview" aria-label="Show preview">${icon("eye", "icon-sm")}</button>
               </div>
             </div>
             <div class="editor-stage" id="editorStage" data-view="split">
@@ -777,6 +809,7 @@ function createEditor() {
           if (!doc) return;
           if (update.docChanged) {
             doc.content = update.state.doc.toString();
+            applyAutoName(doc);
             scheduleRender();
             renderNavigation();
             updateStatus();
@@ -1220,9 +1253,16 @@ function bindShellEvents() {
   document.querySelector("#readerContent")?.addEventListener("click", onRenderedClick);
   document.querySelector("#readerSurface")?.addEventListener("scroll", onReaderScroll, { passive: true });
   document.querySelector("#documentList")?.addEventListener("click", onDocumentListClick);
-  document.querySelector("#tabs")?.addEventListener("click", onTabsClick);
+  document.querySelector("#documentList")?.addEventListener("dblclick", onDocumentListDblClick);
+  document.querySelector("#docRailActions")?.addEventListener("click", onDocumentListClick);
+  document.querySelector("#docOverflowMenu")?.addEventListener("click", onDocumentListClick);
+  document.querySelector("#archiveList")?.addEventListener("click", onDocumentListClick);
   document.querySelector("#outlineList")?.addEventListener("click", onOutlineClick);
+  document.querySelector("#outlineList")?.addEventListener("dblclick", onDocumentListDblClick);
   document.querySelector("#readerOutline")?.addEventListener("click", onOutlineClick);
+  document.querySelector("#readerOutline")?.addEventListener("dblclick", onDocumentListDblClick);
+  document.querySelector("#readerTitle")?.addEventListener("dblclick", onReaderTitleDblClick);
+  document.addEventListener("click", onDocumentMenuDismiss, true);
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => setViewMode(button.dataset.view)));
   document.querySelector("#themeGrid")?.addEventListener("click", (event) => {
     const card = event.target.closest("[data-theme-preset]");
@@ -1251,6 +1291,8 @@ async function handleActionClick(event) {
     theme: openThemeDrawer,
     "close-theme": closeThemeDrawer,
     "toggle-sidebar": toggleSidebar,
+    "toggle-archive": toggleArchiveSection,
+    "doc-menu": toggleDocOverflowMenu,
     commands: openCommandPalette,
     "reader-outline": toggleReaderOutline,
     print: () => window.print(),
@@ -1259,48 +1301,172 @@ async function handleActionClick(event) {
   await actions[action]?.();
 }
 
-function renderNavigation() {
-  if (state.surface !== "shell") return;
+function otherDocumentNames(doc) {
+  return state.docs.filter((item) => item.id !== doc?.id).map((item) => item.name);
+}
+
+function applyAutoName(doc) {
+  if (!doc || doc.nameCustomized) return false;
+  const heading = extractPrimaryHeading(doc.content);
+  if (!heading) return false;
+  const nextName = headingToFilename(heading, otherDocumentNames(doc));
+  if (doc.name === nextName) return false;
+  doc.name = nextName;
+  return true;
+}
+
+function uniqueDocumentName(name, doc) {
+  const taken = new Set(otherDocumentNames(doc).map((item) => item.toLowerCase()));
+  let candidate = normalizeDocumentName(name);
+  let index = 2;
+  const base = candidate.replace(/\.md$/i, "");
+  while (taken.has(candidate.toLowerCase())) {
+    candidate = `${base} ${index}.md`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function commitDocumentRename(doc, rawName, { customized = true } = {}) {
+  if (!doc) return;
+  doc.name = uniqueDocumentName(rawName, doc);
+  if (customized) doc.nameCustomized = true;
+  renderNavigation();
+  updateReaderTitle();
+  updateStatus();
+  scheduleSessionSave();
+}
+
+function updateReaderTitle() {
+  const title = document.querySelector("#readerTitle");
+  if (title && !title.querySelector("input")) title.textContent = activeDoc()?.name || "";
+}
+
+function startInlineRename({ element, value, className, onCommit, onCancel }) {
+  if (!element || element.querySelector("input")) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = className;
+  input.value = value;
+  input.setAttribute("aria-label", "Rename");
+  const finish = (commit) => {
+    const next = input.value;
+    input.remove();
+    element.hidden = false;
+    if (commit) onCommit?.(next);
+    else onCancel?.();
+  };
+  element.hidden = true;
+  element.after(input);
+  input.focus();
+  input.select();
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true), { once: true });
+}
+
+function clearDocSelection() {
+  state.selectedDocIds.clear();
+  state.selectionAnchorId = null;
+  renderDocRailActions();
+}
+
+function toggleDocSelection(id, { range = false, additive = false } = {}) {
+  if (!state.docs.some((doc) => doc.id === id)) return;
+  if (range && state.selectionAnchorId) {
+    const ids = state.docs.map((doc) => doc.id);
+    const start = ids.indexOf(state.selectionAnchorId);
+    const end = ids.indexOf(id);
+    if (start !== -1 && end !== -1) {
+      const [from, to] = start < end ? [start, end] : [end, start];
+      if (!additive) state.selectedDocIds.clear();
+      ids.slice(from, to + 1).forEach((docId) => state.selectedDocIds.add(docId));
+    }
+  } else if (additive || state.selectedDocIds.size) {
+    if (state.selectedDocIds.has(id)) state.selectedDocIds.delete(id);
+    else state.selectedDocIds.add(id);
+    state.selectionAnchorId = id;
+  } else {
+    state.selectedDocIds.clear();
+    state.selectionAnchorId = id;
+  }
+  renderDocRailActions();
+  renderDocumentList();
+}
+
+function selectedDocuments() {
+  return state.docs.filter((doc) => state.selectedDocIds.has(doc.id));
+}
+
+function renderDocRailActions() {
+  const bar = document.querySelector("#docRailActions");
+  if (!bar) return;
+  const count = state.selectedDocIds.size;
+  if (!count) {
+    bar.classList.add("hidden");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.innerHTML = `
+    <span class="doc-rail-count">${count} selected</span>
+    <button class="btn btn-quiet btn-sm" type="button" data-bulk-action="download">${icon("download", "icon-sm")} Download</button>
+    <button class="btn btn-quiet btn-sm" type="button" data-bulk-action="archive">${icon("folder", "icon-sm")} Archive</button>
+    <button class="btn btn-quiet btn-sm" type="button" data-bulk-action="close">${icon("x", "icon-sm")} Close</button>`;
+}
+
+function renderDocumentList() {
+  const selectionMode = state.selectedDocIds.size > 0;
   const docsHtml = state.docs.map((doc) => `
-    <div class="doc-item ${doc.id === state.activeId ? "active" : ""}" data-doc-id="${doc.id}">
+    <div class="doc-item ${doc.id === state.activeId ? "active" : ""} ${state.selectedDocIds.has(doc.id) ? "selected" : ""}" data-doc-id="${doc.id}">
+      <input class="doc-select ${selectionMode ? "visible" : ""}" type="checkbox" data-select-checkbox="${doc.id}" ${state.selectedDocIds.has(doc.id) ? "checked" : ""} aria-label="Select ${escapeHtml(doc.name)}" />
       ${icon("file", "icon-sm doc-icon")}
       <button class="doc-name" type="button" data-select-doc="${doc.id}" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</button>
       ${isDirty(doc) ? '<span class="dirty-dot" aria-label="Unsaved changes"></span>' : ""}
-    </div>`).join("");
-  document.querySelector("#documentList").innerHTML = docsHtml;
-
-  const tabsHtml = state.docs.map((doc) => `
-    <div class="tab ${doc.id === state.activeId ? "active" : ""}" role="tab" aria-selected="${doc.id === state.activeId}" data-doc-id="${doc.id}">
-      ${isDirty(doc) ? '<span class="dirty-dot" aria-label="Unsaved changes"></span>' : ""}
-      <button class="tab-name" type="button" data-select-doc="${doc.id}" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</button>
       <button class="doc-close" type="button" data-close-doc="${doc.id}" aria-label="Close ${escapeHtml(doc.name)}">${icon("x", "icon-sm")}</button>
     </div>`).join("");
-  document.querySelector("#tabs").innerHTML = tabsHtml;
+  document.querySelector("#documentList").innerHTML = docsHtml || '<div class="outline-empty">Open or create a document to begin.</div>';
+}
+
+function renderArchiveList() {
+  const list = document.querySelector("#archiveList");
+  const count = document.querySelector("#archiveCount");
+  const toggle = document.querySelector("[data-action='toggle-archive']");
+  if (count) count.textContent = state.archivedDocs.length ? `(${state.archivedDocs.length})` : "";
+  if (toggle) toggle.setAttribute("aria-expanded", String(state.archiveExpanded));
+  if (!list) return;
+  list.classList.toggle("hidden", !state.archiveExpanded || !state.archivedDocs.length);
+  if (!state.archivedDocs.length) {
+    list.innerHTML = "";
+    return;
+  }
+  list.innerHTML = state.archivedDocs.map((doc) => `
+    <div class="archive-item" data-archive-id="${doc.id}">
+      ${icon("file", "icon-sm doc-icon")}
+      <button class="archive-name" type="button" data-restore-archive="${doc.id}" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</button>
+      <button class="btn btn-quiet icon-btn btn-sm archive-download" type="button" data-download-archive="${doc.id}" aria-label="Download ${escapeHtml(doc.name)}">${icon("download", "icon-sm")}</button>
+      <button class="btn btn-quiet icon-btn btn-sm archive-delete" type="button" data-delete-archive="${doc.id}" aria-label="Delete ${escapeHtml(doc.name)} permanently">${icon("trash", "icon-sm")}</button>
+    </div>`).join("");
+}
+
+function renderNavigation() {
+  if (state.surface !== "shell") return;
+  renderDocumentList();
+  renderDocRailActions();
+  renderArchiveList();
   renderOutline();
 }
 
 function extractOutline(content) {
-  const result = [];
-  const counts = new Map();
-  let fenced = false;
-  for (const line of content.split("\n")) {
-    if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
-    if (fenced) continue;
-    const match = /^(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!match) continue;
-    const text = match[2].replace(/[*_`~\[\]]/g, "");
-    const base = slugify(text);
-    const count = counts.get(base) || 0;
-    counts.set(base, count + 1);
-    result.push({ level: match[1].length, text, id: count ? `${base}-${count + 1}` : base });
-  }
-  return result;
+  return extractOutlineEntries(content);
 }
 
 function renderOutline() {
   const doc = activeDoc();
   const outline = doc ? extractOutline(doc.content) : [];
-  const html = outline.length ? outline.map((entry) => `<button class="outline-link level-${entry.level}" type="button" data-heading-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.text)}">${escapeHtml(entry.text)}</button>`).join("") : '<div class="outline-empty">Add headings to build a navigable outline.</div>';
+  const html = outline.length ? outline.map((entry) => `<button class="outline-link level-${entry.level}" type="button" data-heading-id="${escapeHtml(entry.id)}" data-heading-line="${entry.lineIndex}" title="${escapeHtml(entry.text)}">${escapeHtml(entry.text)}</button>`).join("") : '<div class="outline-empty">Add headings to build a navigable outline.</div>';
   const sidebar = document.querySelector("#outlineList");
   const reader = document.querySelector("#readerOutline");
   if (sidebar) sidebar.innerHTML = html;
@@ -1309,19 +1475,113 @@ function renderOutline() {
   if (count) count.textContent = outline.length || "";
 }
 
-function onDocumentListClick(event) {
-  const select = event.target.closest("[data-select-doc]");
-  if (select) selectDocument(select.dataset.selectDoc);
+function applyDocumentContent(doc, content) {
+  if (!doc) return;
+  doc.content = content;
+  applyAutoName(doc);
+  scheduleRender();
+  renderNavigation();
+  updateStatus();
+  scheduleSessionSave();
+  if (doc.id === state.activeId && state.editor) {
+    state.suppressEditor = true;
+    state.editor.dispatch({
+      changes: { from: 0, to: state.editor.state.doc.length, insert: content },
+      selection: { anchor: Math.min(doc.cursor || 0, content.length) },
+    });
+    state.suppressEditor = false;
+  }
 }
 
-function onTabsClick(event) {
+function onDocumentListClick(event) {
   const close = event.target.closest("[data-close-doc]");
+  const checkbox = event.target.closest("[data-select-checkbox]");
   const select = event.target.closest("[data-select-doc]");
-  if (close) closeDocument(close.dataset.closeDoc);
-  else if (select) selectDocument(select.dataset.selectDoc);
+  const bulk = event.target.closest("[data-bulk-action]");
+  const restore = event.target.closest("[data-restore-archive]");
+  const downloadArchive = event.target.closest("[data-download-archive]");
+  const deleteArchive = event.target.closest("[data-delete-archive]");
+  const overflow = event.target.closest("[data-doc-overflow]");
+
+  if (bulk) {
+    event.preventDefault();
+    if (bulk.dataset.bulkAction === "download") bulkDownloadDocuments(selectedDocuments());
+    else if (bulk.dataset.bulkAction === "archive") archiveDocuments(selectedDocuments().map((doc) => doc.id));
+    else if (bulk.dataset.bulkAction === "close") bulkCloseDocuments(selectedDocuments().map((doc) => doc.id));
+    return;
+  }
+  if (overflow) {
+    event.preventDefault();
+    closeDocOverflowMenu();
+    runDocOverflowAction(overflow.dataset.docOverflow);
+    return;
+  }
+  if (restore) { event.preventDefault(); restoreArchivedDocument(restore.dataset.restoreArchive); return; }
+  if (downloadArchive) { event.preventDefault(); downloadArchivedDocument(downloadArchive.dataset.downloadArchive); return; }
+  if (deleteArchive) { event.preventDefault(); deleteArchivedDocument(deleteArchive.dataset.deleteArchive); return; }
+  if (close) { event.preventDefault(); closeDocument(close.dataset.closeDoc); return; }
+  if (checkbox) {
+    event.stopPropagation();
+    toggleDocSelection(checkbox.dataset.selectCheckbox, { additive: true });
+    return;
+  }
+  if (!select) return;
+  const id = select.dataset.selectDoc;
+  if (event.shiftKey) toggleDocSelection(id, { range: true, additive: event.ctrlKey || event.metaKey });
+  else if (event.ctrlKey || event.metaKey) toggleDocSelection(id, { additive: true });
+  else {
+    clearDocSelection();
+    selectDocument(id);
+  }
+}
+
+function onDocumentListDblClick(event) {
+  const nameButton = event.target.closest(".doc-name");
+  if (nameButton) {
+    event.preventDefault();
+    const doc = state.docs.find((item) => item.id === nameButton.dataset.selectDoc);
+    if (!doc) return;
+    startInlineRename({
+      element: nameButton,
+      value: doc.name.replace(/\.md$/i, ""),
+      className: "doc-rename-input",
+      onCommit: (value) => commitDocumentRename(doc, value),
+    });
+    return;
+  }
+  const outlineLink = event.target.closest(".outline-link");
+  if (outlineLink) {
+    event.preventDefault();
+    const doc = activeDoc();
+    if (!doc) return;
+    const lineIndex = Number(outlineLink.dataset.headingLine);
+    startInlineRename({
+      element: outlineLink,
+      value: outlineLink.textContent,
+      className: `outline-rename-input level-${outlineLink.className.match(/level-(\d)/)?.[1] || "1"}`,
+      onCommit: (value) => {
+        const next = renameHeadingInContent(doc.content, lineIndex, value);
+        if (next !== doc.content) applyDocumentContent(doc, next);
+      },
+    });
+  }
+}
+
+function onReaderTitleDblClick(event) {
+  const doc = activeDoc();
+  if (!doc || event.target.closest("input")) return;
+  const title = document.querySelector("#readerTitle");
+  startInlineRename({
+    element: title,
+    value: doc.name.replace(/\.md$/i, ""),
+    className: "doc-rename-input reader-rename-input",
+    onCommit: (value) => commitDocumentRename(doc, value),
+    onCancel: updateReaderTitle,
+  });
 }
 
 function onOutlineClick(event) {
+  if (event.target.closest("input")) return;
   const link = event.target.closest("[data-heading-id]");
   if (!link) return;
   const surface = state.mode === "reader" ? document.querySelector("#readerContent") : document.querySelector("#previewContent");
@@ -1364,7 +1624,7 @@ function renderActiveDocument() {
   renderInto(preview, doc.content);
   if (state.mode === "reader") renderInto(reader, doc.content);
   const title = document.querySelector("#readerTitle");
-  if (title) title.textContent = doc.name;
+  if (title && !title.querySelector("input")) title.textContent = doc.name;
 }
 
 function selectDocument(id) {
@@ -1372,6 +1632,7 @@ function selectDocument(id) {
   const current = activeDoc();
   if (current && state.editor) current.cursor = state.editor.state.selection.main.head;
   state.activeId = id;
+  state.selectionAnchorId = id;
   updateAll();
   if (matchMedia("(max-width: 760px)").matches) document.querySelector("#workspaceGrid")?.classList.add("sidebar-hidden");
   scheduleSessionSave();
@@ -1382,7 +1643,7 @@ function newDocument() {
   let index = 1;
   let name = "Untitled.md";
   while (existing.has(name)) name = `Untitled ${++index}.md`;
-  const doc = makeDocument(name, "", { savedContent: "__new__" });
+  const doc = makeDocument(name, "", { savedContent: "__new__", nameCustomized: false });
   state.docs.push(doc);
   state.activeId = doc.id;
   if (state.surface === "welcome") showShell("workspace");
@@ -1391,7 +1652,7 @@ function newDocument() {
 }
 
 function openSample() {
-  const doc = makeDocument("Welcome.md", SAMPLE);
+  const doc = makeDocument("Welcome.md", SAMPLE, { nameCustomized: true });
   state.docs.push(doc);
   state.activeId = doc.id;
   showShell("workspace");
@@ -1424,7 +1685,7 @@ async function handleFiles(files, mode = "workspace", handles = []) {
   }
   const opened = await Promise.all(accepted.map(async (file, index) => {
     const content = await file.text();
-    return makeDocument(file.name, content, { handle: handles[index] || null, lastModified: file.lastModified });
+    return makeDocument(file.name, content, { handle: handles[index] || null, lastModified: file.lastModified, nameCustomized: true });
   }));
   state.docs.push(...opened);
   state.activeId = opened[0].id;
@@ -1475,7 +1736,128 @@ function downloadText(name, content, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function closeDocument(id) {
+function toggleArchiveSection() {
+  state.archiveExpanded = !state.archiveExpanded;
+  renderArchiveList();
+}
+
+function toggleDocOverflowMenu() {
+  const menu = document.querySelector("#docOverflowMenu");
+  if (!menu) return;
+  state.docMenuOpen = !state.docMenuOpen;
+  if (!state.docMenuOpen) {
+    menu.classList.add("hidden");
+    document.querySelector("[data-action='doc-menu']")?.setAttribute("aria-expanded", "false");
+    return;
+  }
+  const selectedCount = state.selectedDocIds.size;
+  const items = [
+    ...(selectedCount ? [{ id: "close-selected", label: `Close selected (${selectedCount})` }] : []),
+    { id: "close-others", label: "Close others" },
+    { id: "close-all", label: "Close all" },
+    { id: "download-all", label: "Download all" },
+    { id: "archive-selected", label: selectedCount ? `Archive selected (${selectedCount})` : "Archive all" },
+  ];
+  menu.innerHTML = items.map((item) => `<button class="doc-overflow-item" type="button" role="menuitem" data-doc-overflow="${item.id}">${escapeHtml(item.label)}</button>`).join("");
+  menu.classList.remove("hidden");
+  document.querySelector("[data-action='doc-menu']")?.setAttribute("aria-expanded", "true");
+}
+
+function closeDocOverflowMenu() {
+  state.docMenuOpen = false;
+  document.querySelector("#docOverflowMenu")?.classList.add("hidden");
+  document.querySelector("[data-action='doc-menu']")?.setAttribute("aria-expanded", "false");
+}
+
+function onDocumentMenuDismiss(event) {
+  if (!state.docMenuOpen) return;
+  if (event.target.closest("#docOverflowMenu, [data-action='doc-menu']")) return;
+  closeDocOverflowMenu();
+}
+
+function runDocOverflowAction(action) {
+  const active = state.activeId;
+  if (action === "close-selected") bulkCloseDocuments([...state.selectedDocIds]);
+  else if (action === "close-others") bulkCloseDocuments(state.docs.filter((doc) => doc.id !== active).map((doc) => doc.id));
+  else if (action === "close-all") bulkCloseDocuments(state.docs.map((doc) => doc.id));
+  else if (action === "download-all") bulkDownloadDocuments(state.docs);
+  else if (action === "archive-selected") archiveDocuments(state.selectedDocIds.size ? [...state.selectedDocIds] : state.docs.map((doc) => doc.id));
+}
+
+function bulkDownloadDocuments(docs) {
+  docs.forEach((doc) => downloadText(doc.name, doc.content, "text/markdown;charset=utf-8"));
+  if (docs.length) toast(`Downloaded ${docs.length} ${docs.length === 1 ? "document" : "documents"}.`);
+}
+
+async function bulkCloseDocuments(ids) {
+  for (const id of [...ids]) {
+    if (!state.docs.some((doc) => doc.id === id)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await closeDocument(id, { allowWelcome: false });
+  }
+  if (!state.docs.length) showWelcome();
+  else updateAll();
+  clearDocSelection();
+  scheduleSessionSave();
+}
+
+function archiveDocuments(ids) {
+  const uniqueIds = [...new Set(ids)];
+  const docs = uniqueIds.map((id) => state.docs.find((doc) => doc.id === id)).filter(Boolean);
+  if (!docs.length) return;
+  docs.forEach((doc) => {
+    const { handle, ...snapshot } = doc;
+    state.archivedDocs.unshift({ ...snapshot, archivedAt: new Date().toISOString() });
+    const index = state.docs.indexOf(doc);
+    state.docs.splice(index, 1);
+    if (state.activeId === doc.id) state.activeId = state.docs[Math.min(index, state.docs.length - 1)]?.id || null;
+  });
+  state.archiveExpanded = true;
+  clearDocSelection();
+  if (!state.docs.length) showWelcome();
+  else updateAll();
+  scheduleArchiveSave();
+  scheduleSessionSave();
+  toast(`Archived ${docs.length} ${docs.length === 1 ? "document" : "documents"}.`);
+}
+
+function restoreArchivedDocument(id) {
+  const index = state.archivedDocs.findIndex((doc) => doc.id === id);
+  if (index === -1) return;
+  const [archived] = state.archivedDocs.splice(index, 1);
+  const restored = makeDocument(archived.name, archived.content, {
+    id: archived.id,
+    savedContent: archived.savedContent,
+    cursor: archived.cursor || 0,
+    nameCustomized: archived.nameCustomized ?? !isAutoNameCandidate(archived.name),
+    handle: null,
+  });
+  state.docs.push(restored);
+  state.activeId = restored.id;
+  if (state.surface === "welcome") showShell("workspace");
+  else updateAll();
+  scheduleArchiveSave();
+  scheduleSessionSave();
+  toast(`Restored ${restored.name}`);
+}
+
+function downloadArchivedDocument(id) {
+  const doc = state.archivedDocs.find((item) => item.id === id);
+  if (!doc) return;
+  downloadText(doc.name, doc.content, "text/markdown;charset=utf-8");
+  toast(`Downloaded ${doc.name}`);
+}
+
+function deleteArchivedDocument(id) {
+  const doc = state.archivedDocs.find((item) => item.id === id);
+  if (!doc) return;
+  state.archivedDocs = state.archivedDocs.filter((item) => item.id !== id);
+  renderArchiveList();
+  scheduleArchiveSave();
+  toast(`Deleted ${doc.name} from archive.`);
+}
+
+async function closeDocument(id, { allowWelcome = true } = {}) {
   const doc = state.docs.find((item) => item.id === id);
   if (!doc) return;
   if (isDirty(doc)) {
@@ -1494,7 +1876,7 @@ async function closeDocument(id) {
   const index = state.docs.indexOf(doc);
   state.docs.splice(index, 1);
   if (state.activeId === id) state.activeId = state.docs[Math.min(index, state.docs.length - 1)]?.id || null;
-  if (!state.docs.length) showWelcome();
+  if (!state.docs.length && allowWelcome) showWelcome();
   else updateAll();
   scheduleSessionSave();
 }
@@ -1511,7 +1893,7 @@ function setMode(mode) {
     reader.classList.remove("hidden");
     sidebar.classList.add("sidebar-hidden");
     renderInto(document.querySelector("#readerContent"), activeDoc()?.content || "");
-    document.querySelector("#readerTitle").textContent = activeDoc()?.name || "";
+    updateReaderTitle();
     document.querySelector("#readerSurface").scrollTop = 0;
   } else {
     reader.classList.add("hidden");
@@ -1759,7 +2141,7 @@ function commandItems() {
     { id: "save", label: "Save active document", icon: "save", shortcut: "Ctrl S", run: () => saveDocument(activeDoc()) },
     { id: "reader", label: state.mode === "reader" ? "Return to workspace" : "Enter Reader mode", icon: state.mode === "reader" ? "edit" : "book", shortcut: "Ctrl ⇧ R", run: () => setMode(state.mode === "reader" ? "workspace" : "reader") },
     { id: "theme", label: "Open Theme Studio", icon: "palette", run: openThemeDrawer },
-    { id: "sidebar", label: "Toggle document sidebar", icon: "list", run: toggleSidebar },
+    { id: "sidebar", label: "Toggle outline sidebar", icon: "list", run: toggleSidebar },
     { id: "edit", label: "Show editor only", icon: "edit", run: () => setViewMode("edit") },
     { id: "split", label: "Show editor and preview", icon: "split", run: () => setViewMode("split") },
     { id: "preview", label: "Show preview only", icon: "eye", run: () => setViewMode("preview") },
@@ -1893,7 +2275,11 @@ function onGlobalKeydown(event) {
 
   const mod = event.ctrlKey || event.metaKey;
   if (!mod) {
-    if (event.key === "Escape" && state.mode === "reader") setMode("workspace");
+    if (event.key === "Escape") {
+      if (state.selectedDocIds.size) { clearDocSelection(); renderDocumentList(); }
+      else if (state.docMenuOpen) closeDocOverflowMenu();
+      else if (state.mode === "reader") setMode("workspace");
+    }
     return;
   }
   const key = event.key.toLowerCase();
@@ -1918,17 +2304,49 @@ function openDatabase() {
 async function loadSession() {
   try {
     const db = await openDatabase();
-    const record = await new Promise((resolve, reject) => {
-      const request = db.transaction("state", "readonly").objectStore("state").get("workspace");
-      request.onsuccess = () => resolve(request.result);
+    const [workspace, archive] = await Promise.all([
+      new Promise((resolve, reject) => {
+        const request = db.transaction("state", "readonly").objectStore("state").get("workspace");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      }),
+      new Promise((resolve, reject) => {
+        const request = db.transaction("state", "readonly").objectStore("state").get("archive");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      }),
+    ]);
+    db.close();
+    if (archive?.docs?.length) state.archivedDocs = archive.docs.map((doc) => ({ ...doc, id: doc.id || uid() }));
+    if (!workspace?.docs?.length) return false;
+    state.docs = workspace.docs.map((doc) => ({
+      ...doc,
+      id: doc.id || uid(),
+      handle: doc.handle || null,
+      nameCustomized: doc.nameCustomized ?? !isAutoNameCandidate(doc.name),
+    }));
+    state.activeId = state.docs.some((doc) => doc.id === workspace.activeId) ? workspace.activeId : state.docs[0].id;
+    return true;
+  } catch { return false; }
+}
+
+let archiveTimer = null;
+function scheduleArchiveSave() {
+  clearTimeout(archiveTimer);
+  archiveTimer = setTimeout(saveArchive, 350);
+}
+
+async function saveArchive() {
+  try {
+    const db = await openDatabase();
+    const record = { key: "archive", docs: state.archivedDocs.map((doc) => ({ ...doc })) };
+    await new Promise((resolve, reject) => {
+      const request = db.transaction("state", "readwrite").objectStore("state").put(record);
+      request.onsuccess = resolve;
       request.onerror = () => reject(request.error);
     });
     db.close();
-    if (!record?.docs?.length) return false;
-    state.docs = record.docs.map((doc) => ({ ...doc, id: doc.id || uid(), handle: doc.handle || null }));
-    state.activeId = state.docs.some((doc) => doc.id === record.activeId) ? record.activeId : state.docs[0].id;
-    return true;
-  } catch { return false; }
+  } catch { /* Archive is optional recovery storage. */ }
 }
 
 function scheduleSessionSave() {

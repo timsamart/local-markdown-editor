@@ -6,7 +6,7 @@ A private, fully local Markdown reader and multi-document editor with Mermaid su
 
 Open [`markdown-studio.html`](./markdown-studio.html) in a modern browser, then drop one or more Markdown files onto the window.
 
-- **Workspace:** multi-file tabs, CodeMirror editing, live preview, document outline, recovery drafts, direct save where supported, and download fallback
+- **Workspace:** sidebar document rail with multi-select, bulk close/download/archive, auto-naming from headings, double-click rename, CodeMirror editing, live preview, outline chapter editing, recovery drafts, direct save where supported, and download fallback
 - **Reader:** focused typography, reading progress, outline, printing, rendered Mermaid diagrams, and drop-to-read at any time
 - **Theme Studio:** ten document presets—including a serene Folio reading theme and an embedded R+V brand style—plus custom font, size, line height, width, and color controls
 - **Local-first:** Markdown and Mermaid output are sanitized; sanitized raw HTML is enabled by default and can be disabled; remote images are blocked

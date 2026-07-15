@@ -3,6 +3,14 @@ import markdownit from "markdown-it";
 import { isMisplacedHashKey } from "../src/keyboard.js";
 import { isFileDragPayload } from "../src/file-drop.js";
 import { shouldRenderRawHtml, shouldUseFullWidthTables, shouldWidenRenderedTable } from "../src/render-options.js";
+import {
+  extractOutlineEntries,
+  extractPrimaryHeading,
+  headingToFilename,
+  isAutoNameCandidate,
+  normalizeDocumentName,
+  renameHeadingInContent,
+} from "../src/document-name.js";
 
 const key = (overrides) => ({
   key: "'",
@@ -42,4 +50,29 @@ assert.match(renderer.render("Hello <span class=\"accent\">HTML</span>"), /<span
 renderer.set({ html: shouldRenderRawHtml({ renderHtml: false }) });
 assert.match(renderer.render("Hello <span class=\"accent\">HTML</span>"), /&lt;span class=&quot;accent&quot;&gt;HTML&lt;\/span&gt;/, "escapes inline HTML when disabled");
 
-console.log("Keyboard, drag-and-drop, and rendering preference tests passed.");
+assert.equal(isAutoNameCandidate("Untitled.md"), true, "detects default untitled names");
+assert.equal(isAutoNameCandidate("Untitled 3.md"), true, "detects numbered untitled names");
+assert.equal(isAutoNameCandidate("guide.md"), false, "ignores real filenames");
+
+const sample = [
+  "Intro",
+  "",
+  "```",
+  "# Ignored",
+  "```",
+  "",
+  "## Second",
+  "### Nested",
+  "## Gamma",
+].join("\n");
+assert.equal(extractPrimaryHeading(sample), "Second", "uses the first heading at the highest level");
+assert.equal(extractOutlineEntries(sample).length, 3, "extracts visible headings only");
+assert.equal(headingToFilename("Main Chapter", ["main-chapter.md"]), "main-chapter 2.md", "avoids filename collisions");
+assert.equal(normalizeDocumentName("notes"), "notes.md", "adds markdown extension");
+assert.equal(
+  renameHeadingInContent("## Old title\n\nBody", 0, "New title"),
+  "## New title\n\nBody",
+  "renames a heading line in place",
+);
+
+console.log("Keyboard, drag-and-drop, rendering, and document naming tests passed.");
