@@ -74,5 +74,20 @@ assert.equal(
   "## New title\n\nBody",
   "renames a heading line in place",
 );
+assert.equal(
+  renameHeadingInContent("# Keep\n\nBody", 99, "Nope"),
+  "# Keep\n\nBody",
+  "leaves content unchanged for an invalid heading line index",
+);
+assert.equal(
+  renameHeadingInContent("### Nested heading ###", 0, "Renamed"),
+  "### Renamed ###",
+  "preserves heading level and trailing closers",
+);
+assert.equal(
+  extractOutlineEntries("```\n# Fenced\n```\n\n# Real").map((entry) => entry.text).join(","),
+  "Real",
+  "skips headings inside fenced code blocks when building the outline",
+);
 
 console.log("Keyboard, drag-and-drop, rendering, and document naming tests passed.");
