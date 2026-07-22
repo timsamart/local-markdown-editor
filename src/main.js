@@ -23,6 +23,7 @@ import {
   normalizeDocumentName,
   renameHeadingInContent,
 } from "./document-name.js";
+import { parseFrontmatter, deriveStatus } from "./frontmatter.js";
 
 const BUILD_DATE = "__BUILD_DATE__";
 const APP_VERSION = "1.0.0";
@@ -428,10 +429,15 @@ async function renderInto(target, content) {
   }
 
   md.set({ html: shouldRenderRawHtml(state.preferences) });
-  const rendered = md.render(content, { slugs: new Map() });
-  target.innerHTML = DOMPurify.sanitize(rendered, {
+  // Split off a leading YAML frontmatter block so it renders as a meaningful
+  // byline instead of two <hr> rules with raw key/value text. The byline HTML
+  // is prepended and runs through the same sanitization pass as the body.
+  const { data: frontmatter, body } = parseFrontmatter(content);
+  const frontmatterHtml = frontmatter ? renderFrontmatter(frontmatter) : "";
+  const rendered = md.render(body, { slugs: new Map() });
+  target.innerHTML = DOMPurify.sanitize(`${frontmatterHtml}${rendered}`, {
     USE_PROFILES: { html: true },
-    ADD_ATTR: ["target", "rel", "data-mermaid", "disabled"],
+    ADD_ATTR: ["target", "rel", "data-mermaid", "disabled", "datetime"],
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
   });
 
@@ -439,6 +445,9 @@ async function renderInto(target, content) {
     link.rel = "noreferrer noopener";
     if (/^https?:/i.test(link.href)) link.dataset.external = "true";
   });
+  // When the frontmatter carries a title, the body usually repeats it as an
+  // <h1>. Drop that duplicate so the title shows once, in the byline.
+  suppressDuplicateTitle(target);
   target.querySelectorAll("img").forEach((image) => {
     const source = image.getAttribute("src") || "";
     if (/^(https?:)?\/\//i.test(source)) {
@@ -543,6 +552,154 @@ function refreshWideTableLayouts() {
 function cleanMermaidError(error) {
   const text = String(error?.message || error || "Unknown Mermaid error").replace(/\s+/g, " ").trim();
   return text.length > 260 ? `${text.slice(0, 257)}…` : text;
+}
+
+// Renders parsed frontmatter as a calm, borderless editorial byline that flows
+// above the document body. Semantic keys get dedicated, meaningful
+// presentations; every other key is surfaced as a quiet key/value row so no
+// metadata is ever silently dropped.
+const META_TITLE_KEYS = ["title", "name"];
+const META_SUBTITLE_KEYS = ["subtitle", "tagline"];
+const META_DESC_KEYS = ["description", "summary", "abstract", "excerpt", "lead"];
+const META_DATE_KEYS = ["created", "updated", "date", "published", "modified"];
+const META_TAG_KEYS = ["tags", "keywords", "topics"];
+const META_AUTHOR_KEYS = ["author", "authors", "by"];
+const META_TYPE_KEYS = ["type", "kind"];
+const META_CATEGORY_KEYS = ["category", "categories", "section"];
+const META_VERSION_KEYS = ["version", "revision", "rev"];
+const META_TIME_KEYS = ["reading_time", "readingtime", "reading-time", "minutes", "readtime", "time_to_read"];
+const META_URL_KEYS = ["url", "permalink", "slug", "canonical_url", "canonical"];
+const META_STATUS_FLAG_KEYS = ["draft", "published", "featured"];
+
+const META_RECOGNIZED = new Set([
+  ...META_TITLE_KEYS, ...META_SUBTITLE_KEYS, ...META_DESC_KEYS, ...META_DATE_KEYS,
+  ...META_TAG_KEYS, ...META_AUTHOR_KEYS, ...META_TYPE_KEYS, ...META_CATEGORY_KEYS,
+  ...META_VERSION_KEYS, ...META_TIME_KEYS, ...META_URL_KEYS, ...META_STATUS_FLAG_KEYS,
+  "status", "state",
+]);
+
+function renderFrontmatter(data) {
+  const parts = [];
+
+  const title = firstValue(data, META_TITLE_KEYS);
+  if (title) parts.push(`<h1 class="doc-meta-title">${escapeHtml(formatInline(title))}</h1>`);
+  const subtitle = firstValue(data, META_SUBTITLE_KEYS);
+  if (subtitle) parts.push(`<p class="doc-meta-subtitle">${escapeHtml(formatInline(subtitle))}</p>`);
+
+  const status = deriveStatus(data);
+  const type = firstValue(data, META_TYPE_KEYS);
+  const category = firstValue(data, META_CATEGORY_KEYS);
+  const version = firstValue(data, META_VERSION_KEYS);
+  const chips = [
+    status && metaChip("status", status.value, status.tone),
+    type && metaChip("type", type),
+    category && metaChip("category", category),
+    version && metaChip("version", version),
+  ].filter(Boolean).join("");
+  if (chips) parts.push(`<div class="doc-meta-chips">${chips}</div>`);
+
+  const description = firstValue(data, META_DESC_KEYS);
+  if (description) parts.push(`<p class="doc-meta-description">${escapeHtml(formatInline(description))}</p>`);
+
+  const author = firstValue(data, META_AUTHOR_KEYS);
+  const dates = META_DATE_KEYS.map((key) => data[key]).filter((value) => value !== null && value !== undefined && value !== "" && typeof value !== "boolean").flatMap(asList)
+    .map((value) => formatDate(value)).filter(Boolean);
+  const readingTime = firstValue(data, META_TIME_KEYS);
+  const bylineParts = [];
+  if (author) bylineParts.push(`<span class="doc-meta-author">By ${escapeHtml(formatInline(author))}</span>`);
+  if (dates.length) bylineParts.push(dates.map((date) => `<time class="doc-meta-date" datetime="${escapeHtml(date.value)}">${escapeHtml(date.display)}</time>`).join('<span class="doc-meta-sep" aria-hidden="true">·</span>'));
+  if (readingTime !== null) bylineParts.push(`<span class="doc-meta-readtime">${escapeHtml(formatReadingTime(readingTime))}</span>`);
+  if (bylineParts.length) parts.push(`<p class="doc-meta-byline">${bylineParts.join('<span class="doc-meta-sep" aria-hidden="true">·</span>')}</p>`);
+
+  const tags = META_TAG_KEYS.flatMap((key) => asList(data[key]));
+  if (tags.length) parts.push(`<p class="doc-meta-tags">${tags.map((tag) => `<span class="doc-meta-tag">${escapeHtml(String(tag))}</span>`).join("")}</p>`);
+
+  const url = firstValue(data, META_URL_KEYS);
+  if (url) parts.push(`<p class="doc-meta-url-row"><span class="doc-meta-url-label">Link</span><span class="doc-meta-url">${escapeHtml(formatInline(url))}</span></p>`);
+
+  const rest = Object.entries(data).filter(([key]) => !META_RECOGNIZED.has(key.toLowerCase()));
+  if (rest.length) parts.push(renderMetaRest(rest));
+
+  if (!parts.length) return "";
+  return `<header class="doc-frontmatter" data-meta-title="${escapeHtml(title ? formatInline(title) : "")}">${parts.join("")}</header>`;
+}
+
+function firstValue(data, keys) {
+  for (const key of keys) {
+    if (data[key] !== undefined && data[key] !== null && data[key] !== "") return data[key];
+  }
+  return null;
+}
+
+function asList(value) {
+  if (value === null || value === undefined) return [];
+  return Array.isArray(value) ? value.map(String) : [String(value)];
+}
+
+function metaChip(kind, value, tone) {
+  const text = String(value).trim();
+  if (!text) return "";
+  // Normalize booleans that reach a chip (e.g. a derived status) to readable text.
+  const label = text === "true" ? "Yes" : text === "false" ? "No" : text;
+  const toneClass = tone || (kind === "status" ? "is-default" : "");
+  return `<span class="doc-meta-chip doc-meta-${kind} ${toneClass}"><span class="doc-meta-dot" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+}
+
+function renderMetaRest(entries) {
+  const rows = entries
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `<dt class="doc-meta-key">${escapeHtml(key)}</dt><dd class="doc-meta-value">${escapeHtml(formatInline(value))}</dd>`)
+    .join("");
+  if (!rows) return "";
+  return `<dl class="doc-meta-rest">${rows}</dl>`;
+}
+
+function formatInline(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join(", ");
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value).trim();
+}
+
+// Renders a reading-time value as "N min read", accepting bare numbers, the
+// common `minutes: N` form, and already-human strings ("5 min") unchanged.
+function formatReadingTime(value) {
+  const text = String(value).trim();
+  const match = /^(\d+)\s*(?:min(?:utes?)?|m)?$/i.exec(text);
+  if (match) return `${match[1]} min read`;
+  return text;
+}
+
+function formatDate(value) {
+  const text = String(value).trim();
+  if (!text) return null;
+  // Accept full ISO 8601 and common calendar forms (YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY).
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(text);
+  if (iso) {
+    const date = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    if (!Number.isNaN(date.getTime())) return { value: text, display: date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) };
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return { value: text, display: parsed.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) };
+  }
+  // Bare, human-readable dates ("yesterday", "Q3 2026") stay as-is.
+  return { value: text, display: text };
+}
+
+// Removes a leading body <h1> when it restates the frontmatter title, so the
+// title is shown once (in the byline) instead of twice. The outline already
+// reflects the real first heading, so dropping a duplicate does not orphan it.
+function suppressDuplicateTitle(target) {
+  const byline = target.querySelector(":scope > .doc-frontmatter[data-meta-title]");
+  const title = byline?.dataset.metaTitle?.trim();
+  if (!title) return;
+  const firstHeading = target.querySelector(":scope > h1");
+  if (!firstHeading) return;
+  if (normalizeTitle(firstHeading.textContent) === normalizeTitle(title)) firstHeading.remove();
+}
+
+function normalizeTitle(text) {
+  return String(text).toLowerCase().replace(/[#:`*_/~]/g, "").replace(/\s+/g, " ").trim();
 }
 
 function appTemplateWelcome() {

@@ -309,6 +309,45 @@ kbd { border: 1px solid var(--chrome-border); border-bottom-color: var(--chrome-
 .render-empty { min-height: 100%; display: grid; place-items: center; padding: 40px; color: var(--doc-muted); text-align: center; }
 .render-empty .icon { width: 30px; height: 30px; margin-bottom: 12px; }
 
+/* Editorial frontmatter byline — borderless, flows like a magazine masthead
+   above the document body. Uses document tokens so it follows every theme. */
+.doc-frontmatter { margin: 0 0 1.8em; padding: 0 0 1.4em; border-bottom: 1px solid color-mix(in srgb, var(--doc-border) 70%, transparent); display: flex; flex-direction: column; gap: .6em; }
+.doc-frontmatter:has(~ h1:first-of-type), .markdown-body > .doc-frontmatter:first-child { margin-bottom: 1.4em; }
+.doc-frontmatter + h1 { margin-top: 0; }
+.doc-meta-title { margin: 0; color: var(--doc-heading); font-family: var(--doc-heading-font); font-size: 2.3em; line-height: 1.08; letter-spacing: -.04em; font-weight: 760; scroll-margin-top: 82px; }
+.doc-meta-subtitle { margin: 0; color: var(--doc-muted); font-size: 1.12em; line-height: 1.4; font-weight: 500; letter-spacing: -.012em; }
+.doc-meta-description { margin: 0; color: var(--doc-text); font-size: .98em; line-height: 1.62; max-width: 60ch; opacity: .9; }
+.doc-meta-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.doc-meta-chip { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 11px; border-radius: 999px; background: var(--doc-surface); color: var(--doc-muted); font-size: .68em; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.doc-meta-chip .doc-meta-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .55; }
+.doc-meta-chip.is-default { color: var(--doc-muted); }
+.doc-meta-status.is-draft { color: var(--warning); }
+.doc-meta-status.is-published { color: var(--success); }
+.doc-meta-status.is-archived { color: var(--doc-muted); opacity: .8; }
+.doc-meta-status.is-review { color: var(--doc-accent); }
+.doc-meta-status.is-blocked { color: var(--danger); }
+.doc-meta-type { color: var(--doc-accent); }
+.doc-meta-type .doc-meta-dot { opacity: .9; }
+.doc-meta-category { color: var(--success); }
+.doc-meta-version { color: var(--doc-muted); background: color-mix(in srgb, var(--doc-accent) 8%, var(--doc-surface)); font-family: var(--doc-code-font); text-transform: none; letter-spacing: 0; }
+.doc-meta-version .doc-meta-dot { display: none; }
+.doc-meta-byline { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 9px; color: var(--doc-muted); font-size: .86em; line-height: 1.5; }
+.doc-meta-author { color: var(--doc-heading); font-weight: 600; }
+.doc-meta-date { font-variant-numeric: tabular-nums; }
+.doc-meta-readtime { color: var(--doc-faint); font-variant-numeric: tabular-nums; }
+.doc-meta-sep { color: var(--doc-border); font-weight: 700; user-select: none; }
+.doc-meta-tags { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.doc-meta-tag { padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--doc-accent) 9%, var(--doc-surface)); color: color-mix(in srgb, var(--doc-accent) 78%, var(--doc-heading)); font-size: .78em; font-weight: 600; line-height: 1.7; transition: background-color .16s ease, color .16s ease; }
+.doc-meta-url-row { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: var(--doc-faint); font-size: .8em; }
+.doc-meta-url-label { font-size: .85em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.doc-meta-url { font-family: var(--doc-code-font); color: var(--doc-link); word-break: break-all; }
+.doc-meta-rest { display: grid; grid-template-columns: auto 1fr; gap: .2em 1em; margin: 0; padding: .7em 1em; border-radius: 9px; background: color-mix(in srgb, var(--doc-surface) 60%, transparent); font-size: .82em; }
+.doc-meta-key { color: var(--doc-muted); font-weight: 600; text-transform: capitalize; }
+.doc-meta-key::after { content: ""; }
+.doc-meta-value { margin: 0; color: var(--doc-text); }
+
+
+
 .reader { width: 100%; height: 100%; position: relative; overflow: auto; background: var(--doc-bg); }
 .reader-header { position: sticky; z-index: 12; top: 14px; width: min(calc(100% - 28px), 1000px); height: 48px; margin: 14px auto -62px; padding: 0 7px; border: 1px solid var(--chrome-border); border-radius: 12px; background: color-mix(in srgb, var(--chrome-surface) 92%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(18px); display: flex; align-items: center; gap: 5px; transition: transform .22s ease, opacity .22s ease; }
 .reader.scrolling .reader-header { transform: translateY(-74px); opacity: 0; pointer-events: none; }
@@ -494,6 +533,7 @@ dialog::backdrop { background: rgba(11, 16, 13, .42); backdrop-filter: blur(2px)
   .editor-pane, .splitter { display: none !important; }
   .markdown-body { max-width: none; width: auto; padding: 0; }
   .markdown-body[data-wide-tables="true"] > :not(.wide-table):not(.render-empty) { max-width: none; }
+  .doc-frontmatter { page-break-inside: avoid; }
 }
 
 @media (prefers-reduced-motion: reduce) {
