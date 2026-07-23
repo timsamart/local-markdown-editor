@@ -1,3 +1,5 @@
+import { frontmatterRange } from "./frontmatter.js";
+
 export function slugify(value) {
   return value.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, "-").replace(/-+/g, "-") || "section";
 }
@@ -14,8 +16,14 @@ export function extractOutlineEntries(content) {
   const result = [];
   const counts = new Map();
   let fenced = false;
+  // Skip a leading frontmatter block so a `# Title`-like line inside it (or
+  // the `---` fence itself) never pollutes the outline or auto-title. Line
+  // indices are kept relative to the full content so rename/scroll stay valid.
+  const range = frontmatterRange(content);
+  const frontmatterEnd = range ? range.endLine : -1;
   const lines = content.split("\n");
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    if (lineIndex <= frontmatterEnd) continue;
     const line = lines[lineIndex];
     if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
     if (fenced) continue;
